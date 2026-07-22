@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+ENV/
+env.bak/
+venv.bak/
+
+# App specifics
+*.mp4
+*.mp3
+*.wav
+*.ass
+temp_workspace/
+debug*.py
+test*.py
+out_*.mp4
+test*.ass
