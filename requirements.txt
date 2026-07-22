@@ -1,0 +1,5 @@
+streamlit==1.36.0
+openai-whisper
+ffmpeg-python==0.2.0
+openai==1.57.0
+imageio-ffmpeg
