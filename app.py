@@ -2,6 +2,7 @@ import streamlit as st
 import tempfile
 import os
 import shutil
+from fontTools.ttLib import TTFont
 
 from core.media_utils import (
     get_audio_duration, 
@@ -13,120 +14,57 @@ from core.media_utils import (
 )
 from core.subtitle_engine import (
     transcribe_audio, 
+    align_user_script_to_audio,
     create_smart_rhythm_chunks,
     extract_flat_words_from_transcript,
     generate_ass_subtitle
 )
-from core.presets import list_presets, get_preset, STUDIO_PALETTES
-from core.fonts import inspect_font_file, RECOMMENDED_CREATOR_FONTS
 
-# Thiết lập cấu hình trang
-st.set_page_config(
-    page_title="AutoSub Pro Studio", 
-    page_icon="■", 
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# Thiết lập giao diện trang
+st.set_page_config(page_title="AutoSub Pro", page_icon="🎬", layout="wide")
 
-# Dark Studio Design System CSS (#0B0C0F, #13151A, #191C22)
+# CSS giao diện hiện đại, tinh giản
 st.markdown("""
 <style>
-/* Reset & Background */
-.stApp {
-    background-color: #0B0C0F;
-    color: #EDEDED;
+.main-header {
+    text-align: center;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-/* Header */
-.studio-brand {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    margin-top: -30px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid #1E222B;
-    padding-bottom: 12px;
-}
-.brand-title {
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    color: #EDEDED;
-    margin: 0;
-}
-.brand-badge {
-    background-color: #191C22;
-    border: 1px solid #2B303C;
     color: #FF4B4B;
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 2px 8px;
+    margin-top: -25px;
+    margin-bottom: 2px;
+    font-weight: 800;
+}
+.sub-header {
+    text-align: center;
+    font-size: 1.05em;
+    color: #888888;
+    margin-bottom: 25px;
+}
+.badge-style {
+    display: inline-block;
+    padding: 3px 8px;
     border-radius: 4px;
-    letter-spacing: 0.5px;
-}
-.brand-meta {
-    margin-left: auto;
-    font-size: 0.8rem;
-    color: #7A8194;
-    font-variant-numeric: tabular-nums;
-}
-
-/* Panel Containers */
-.studio-card {
-    background-color: #13151A;
-    border: 1px solid #1F232D;
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 16px;
-}
-.card-header {
-    font-size: 0.82rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #8E95A5;
-    margin-bottom: 12px;
-}
-
-/* Preview Stage Container */
-.preview-stage {
-    background-color: #0E1015;
-    border: 1px solid #1F232D;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 480px;
-    padding: 12px;
-    position: relative;
-}
-
-/* Buttons */
-.stButton > button {
-    border-radius: 6px;
-    font-weight: 600;
-    transition: all 0.15s ease;
+    font-size: 11px;
+    font-weight: bold;
+    margin-right: 5px;
 }
 </style>
+<h1 class="main-header">🎬 AutoSub Pro</h1>
+<p class="sub-header">Hệ Thống Typography Phụ Đề Chuẩn Studio & Hiệu Ứng Nảy Chữ Viral</p>
 """, unsafe_allow_html=True)
 
-# Khởi tạo session state lưu trữ
+# Khởi tạo session state lưu dữ liệu bóc băng
 if "transcribed_video_name" not in st.session_state:
     st.session_state.transcribed_video_name = None
 if "transcript_raw" not in st.session_state:
     st.session_state.transcript_raw = None
 if "chunks_data" not in st.session_state:
     st.session_state.chunks_data = None
-if "preview_frame_path" not in st.session_state:
-    st.session_state.preview_frame_path = None
-if "rendered_video_path" not in st.session_state:
-    st.session_state.rendered_video_path = None
-if "video_meta" not in st.session_state:
-    st.session_state.video_meta = None
 
 def helper_update_chunk_text(chunk, new_text):
+    """
+    Cập nhật lại văn bản của 1 chunk và phân bổ thời gian đều cho các từ mới.
+    """
     words_raw = new_text.strip().split()
     if not words_raw:
         return chunk
@@ -144,407 +82,449 @@ def helper_update_chunk_text(chunk, new_text):
         })
     return new_chunk
 
-# Top Studio Brand Bar
-meta_text = ""
-if st.session_state.video_meta:
-    meta = st.session_state.video_meta
-    meta_text = f"{meta['width']}×{meta['height']}  •  {meta['duration']:.1f}s  •  {meta['chunks_count']} segments"
+# ==========================================
+# BƯỚC 1: TẢI LÊN MEDIA & ĐỒNG BỘ KỊCH BẢN
+# ==========================================
+st.markdown("### 📥 Bước 1: Tải Lên Video & Đồng Bộ Kịch Bản")
 
-st.markdown(f"""
-<div class="studio-brand">
-    <h1 class="brand-title">AUTOSUB PRO</h1>
-    <span class="brand-badge">STUDIO</span>
-    <span class="brand-meta">{meta_text}</span>
-</div>
-""", unsafe_allow_html=True)
+col_upload_1, col_upload_2 = st.columns([1.4, 1])
+with col_upload_1:
+    video_file = st.file_uploader("Tải lên File Video Gốc (.mp4, .mov) 🎬", type=["mp4", "mov"])
+    audio_file = st.file_uploader("Tải lên File Âm Thanh Thay Thế (.mp3, .wav) 🎙️ [Tùy chọn]", type=["mp3", "wav"])
 
-# Main Studio Layout: 2 Columns (Left: Visual Canvas Stage, Right: Studio Inspector)
-col_stage, col_inspector = st.columns([1.1, 1.0], gap="large")
-
-# =========================================================================
-# RIGHT COLUMN: STUDIO INSPECTOR (Controls & Orchestration)
-# =========================================================================
-with col_inspector:
-    st.markdown('<div class="card-header">MEDIA & INGESTION</div>', unsafe_allow_html=True)
+with col_upload_2:
+    sync_mode = st.radio(
+        "Phương thức tạo phụ đề:",
+        options=[
+            "🤖 Dùng AI Bóc Băng & Căn Nhịp (Khuyên dùng)",
+            "⚡ Khớp Nhanh Kịch Bản (Không cần AI - <1s)"
+        ],
+        index=0,
+        help="Nếu bạn đã dán kịch bản và muốn xử lý tức thì không cần đợi Whisper, chọn 'Khớp Nhanh Kịch Bản'."
+    )
     
-    col_up_vid, col_up_aud = st.columns(2)
-    with col_up_vid:
-        video_file = st.file_uploader("Video Source (.mp4, .mov)", type=["mp4", "mov"], label_visibility="collapsed")
-    with col_up_aud:
-        audio_file = st.file_uploader("Replace Audio (.mp3, .wav)", type=["mp3", "wav"], label_visibility="collapsed")
+    whisper_model_choice = st.selectbox(
+        "Mô hình Whisper",
+        options=["base", "small"],
+        index=0,
+        disabled=("Không cần AI" in sync_mode),
+        help="Base: Nhanh nhẹ. Small: Nhận diện tiếng Việt chuẩn hơn."
+    )
 
-    # Ingestion Controls
-    col_model, col_btn_trans = st.columns([1, 1.2])
-    with col_model:
-        whisper_model = st.selectbox(
-            "Speech Engine",
-            options=["base", "small"],
-            index=0,
-            help="Base: Fast (recommended). Small: High accuracy for Vietnamese dialects.",
-            label_visibility="collapsed"
-        )
-    with col_btn_trans:
-        btn_transcribe = st.button("Transcribe Subtitles", use_container_width=True, type="secondary")
+# Ô DÁN KỊCH BẢN CHÍNH XÁC (GIẢI PHÁP 100% CHUẨN TỪNG CHỮ)
+custom_script = st.text_area(
+    "📜 Kịch Bản / Lời Thoại Chính Xác (Dán vào đây để phụ đề đúng 100% từng chữ và dấu câu)",
+    placeholder="Dán toàn bộ lời thoại bạn đã thu âm vào đây... AI sẽ dùng kịch bản này để đảm bảo chữ đúng 100% mà không bị phụ thuộc vào lỗi của Whisper!",
+    height=110,
+    help="Khi bạn dán kịch bản vào đây, hệ thống sẽ sử dụng 100% từng chữ và dấu câu của bạn, kết hợp với AI để bắt đúng nhịp nói trong video."
+)
 
-    # Reset transcript upon new video
-    if video_file and st.session_state.transcribed_video_name != video_file.name:
-        st.session_state.transcribed_video_name = None
-        st.session_state.transcript_raw = None
-        st.session_state.chunks_data = None
-        st.session_state.preview_frame_path = None
-        st.session_state.rendered_video_path = None
-        st.session_state.video_meta = None
+btn_transcribe = st.button("🚀 BẮT ĐẦU ĐỒNG BỘ & TẠO PHỤ ĐỀ", use_container_width=True, type="secondary")
 
-    # Handle Transcription Execution
-    if btn_transcribe:
-        if not video_file:
-            st.error("Please select a video file before transcribing.")
-        else:
-            with st.spinner("Extracting audio and analyzing rhythm with Whisper AI..."):
-                temp_trans = tempfile.mkdtemp()
-                try:
-                    temp_vid = os.path.join(temp_trans, "in.mp4")
-                    with open(temp_vid, "wb") as f:
-                        f.write(video_file.getvalue())
-                        
-                    if audio_file:
-                        temp_aud = os.path.join(temp_trans, "in.mp3")
-                        with open(temp_aud, "wb") as f:
-                            f.write(audio_file.getvalue())
-                    else:
-                        temp_aud = os.path.join(temp_trans, "extracted.mp3")
-                        extract_video_audio(temp_vid, temp_aud)
-                        
-                    transcript = transcribe_audio(temp_aud, model_name=whisper_model, language="vi")
+# Reset transcript nếu người dùng chọn video mới
+if video_file and st.session_state.transcribed_video_name != video_file.name:
+    st.session_state.transcribed_video_name = None
+    st.session_state.transcript_raw = None
+    st.session_state.chunks_data = None
+
+# Thực hiện bóc băng / căn nhịp khi bấm nút
+if btn_transcribe:
+    if not video_file:
+        st.error("⚠️ Vui lòng tải lên file Video trước!")
+    else:
+        temp_dir_transcribe = tempfile.mkdtemp()
+        try:
+            temp_vid_path = os.path.join(temp_dir_transcribe, "temp_video.mp4")
+            with open(temp_vid_path, "wb") as f:
+                f.write(video_file.getvalue())
+                
+            if audio_file:
+                temp_audio_path = os.path.join(temp_dir_transcribe, "temp_audio.mp3")
+                with open(temp_audio_path, "wb") as f:
+                    f.write(audio_file.getvalue())
+            else:
+                temp_audio_path = os.path.join(temp_dir_transcribe, "extracted_audio.mp3")
+                extract_video_audio(temp_vid_path, temp_audio_path)
+                
+            audio_dur = get_audio_duration(temp_audio_path)
+            
+            if "Không cần AI" in sync_mode:
+                if not custom_script or not custom_script.strip():
+                    st.warning("⚠️ Chế độ không dùng AI yêu cầu bạn phải dán Kịch bản vào ô bên trên!")
+                else:
+                    aligned_words = align_user_script_to_audio(custom_script, [], audio_duration=audio_dur)
+                    smart_chunks = create_smart_rhythm_chunks(aligned_words, max_words=3)
+                    st.session_state.transcribed_video_name = video_file.name
+                    st.session_state.chunks_data = smart_chunks
+                    st.success(f"⚡ Đã khớp kịch bản thành công trong 0.1s! Tạo ra {len(smart_chunks)} phân đoạn.")
+            else:
+                with st.spinner("⏳ Đang phân tích âm thanh và căn nhịp phụ đề..."):
+                    transcript = transcribe_audio(temp_audio_path, model_name=whisper_model_choice, language="vi")
                     flat_words = extract_flat_words_from_transcript(transcript)
-                    smart_chunks = create_smart_rhythm_chunks(flat_words, max_words=3)
                     
-                    vw, vh = get_video_dimensions(temp_vid)
-                    vdur = get_audio_duration(temp_aud)
-                    
+                    if custom_script and custom_script.strip():
+                        aligned_words = align_user_script_to_audio(custom_script, flat_words, audio_duration=audio_dur)
+                        smart_chunks = create_smart_rhythm_chunks(aligned_words, max_words=3)
+                        msg = f"🎉 Đã khớp kịch bản của bạn với giọng nói thành công 100%! Tạo ra {len(smart_chunks)} phân đoạn nhịp thở."
+                    else:
+                        smart_chunks = create_smart_rhythm_chunks(flat_words, max_words=3)
+                        msg = f"🎉 Bóc băng thành công! AI đã phân đoạn thành {len(smart_chunks)} cụm nhịp thở tự nhiên."
+                        
                     st.session_state.transcribed_video_name = video_file.name
                     st.session_state.transcript_raw = transcript
                     st.session_state.chunks_data = smart_chunks
-                    st.session_state.video_meta = {
-                        "width": vw,
-                        "height": vh,
-                        "duration": vdur,
-                        "chunks_count": len(smart_chunks)
-                    }
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Transcription failed: {e}")
-                finally:
-                    shutil.rmtree(temp_trans, ignore_errors=True)
+                    st.success(msg)
+        except Exception as e:
+            st.error(f"Lỗi khi xử lý: {e}")
+        finally:
+            shutil.rmtree(temp_dir_transcribe, ignore_errors=True)
 
-    st.markdown('<hr style="border: 0; border-top: 1px solid #1F232D; margin: 16px 0;">', unsafe_allow_html=True)
-    
-    # Inspector Tabs: Studio Controls
-    tab_presets, tab_typo, tab_motion, tab_editor, tab_adv = st.tabs([
-        "PRESETS", "TYPOGRAPHY", "MOTION & COLOR", "TRANSCRIPT", "ADVANCED"
-    ])
-
-    # 1. TAB: PRESETS
-    with tab_presets:
-        presets_list = list_presets()
-        preset_names = [f"{p['name']}  —  {p['tagline']}" for p in presets_list]
-        selected_preset_idx = st.selectbox(
-            "Design Preset",
-            range(len(preset_names)),
-            format_func=lambda i: preset_names[i],
-            label_visibility="collapsed"
-        )
-        active_preset = presets_list[selected_preset_idx]
-        st.caption(f"Category: **{active_preset['badge']}** • Base Font: **{active_preset['font_family']}**")
-
-    # 2. TAB: TYPOGRAPHY
-    with tab_typo:
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            rec_font_names = [f["name"] for f in RECOMMENDED_CREATOR_FONTS]
-            selected_font_family = st.selectbox(
-                "Font Family",
-                options=rec_font_names,
-                index=rec_font_names.index(active_preset["font_family"]) if active_preset["font_family"] in rec_font_names else 0
-            )
-        with col_f2:
-            custom_font_file = st.file_uploader("Upload TTF/OTF", type=["ttf", "otf"])
-            if custom_font_file:
-                temp_font_dir = tempfile.mkdtemp()
-                temp_font_path = os.path.join(temp_font_dir, custom_font_file.name)
-                with open(temp_font_path, "wb") as f:
-                    f.write(custom_font_file.getvalue())
-                font_meta = inspect_font_file(temp_font_path)
-                selected_font_family = font_meta["family"]
-                st.caption(f"Detected: **{font_meta['display_name']}**")
-                
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            font_size = st.slider("Font Size", min_value=30, max_value=120, value=active_preset["font_size"], step=2)
-        with col_t2:
-            all_caps = st.checkbox("ALL CAPS (Shorts/TikTok)", value=active_preset["all_caps"])
+# ==========================================
+# BƯỚC 2: XEM & SỬA LỖI CHÍNH TẢ TRỰC TIẾP
+# ==========================================
+if st.session_state.chunks_data:
+    st.markdown("---")
+    st.markdown("### 📝 Bước 2: Soát & Chỉnh Sửa Phụ Đề Trực Tiếp")
+    with st.expander(f"📋 Danh sách {len(st.session_state.chunks_data)} câu phụ đề (Bấm để xem và sửa nếu AI nghe nhầm từ)", expanded=False):
+        st.caption("Mẹo: Sửa chữ tại đây sẽ cập nhật trực tiếp lên video thành phẩm mà không làm lệch nhịp âm thanh!")
+        
+        for c_idx, chunk in enumerate(st.session_state.chunks_data):
+            c_text = " ".join(w['word'] for w in chunk)
+            c_start = chunk[0]['start']
+            c_end = chunk[-1]['end']
             
-        words_per_line = st.slider(
-            "Pacing (Words per Line)",
-            min_value=1, max_value=6, value=active_preset["words_per_line"], step=1,
-            help="1-2 words: Rapid punchy hook (Alex Hormozi). 3-4 words: Standard TikTok. 5-6 words: Vlog / Editorial."
-        )
-
-    # 3. TAB: MOTION & COLOR
-    with tab_motion:
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            anim_options = {
-                "pop_bounce": "Elastic Bounce (112% motion curve)",
-                "pop_subtle": "Subtle Lift (108%)",
-                "pop_strong": "Impact Punch (120%)",
-                "none": "Static Highlight (No scale)"
-            }
-            selected_anim = st.selectbox(
-                "Active Word Animation",
-                options=list(anim_options.keys()),
-                format_func=lambda k: anim_options[k],
-                index=list(anim_options.keys()).index(active_preset["animation_mode"]) if active_preset["animation_mode"] in anim_options else 0
+            new_text = st.text_input(
+                f"[{c_start:.1f}s -> {c_end:.1f}s] Câu #{c_idx+1}:", 
+                value=c_text, 
+                key=f"chunk_edit_{c_idx}"
             )
-        with col_m2:
-            palette_names = list(STUDIO_PALETTES.keys())
-            selected_color_name = st.selectbox("Highlight Palette", options=palette_names, index=0)
-            highlight_color = STUDIO_PALETTES[selected_color_name]
+            if new_text != c_text:
+                st.session_state.chunks_data[c_idx] = helper_update_chunk_text(chunk, new_text)
+
+# ==========================================
+# BƯỚC 3: TÙY CHỈNH THẨM MỸ & STYLE VIRAL
+# ==========================================
+st.markdown("---")
+st.markdown("### 🎨 Bước 3: Tùy Chỉnh Thẩm Mỹ & Style Phụ Đề Viral")
+
+col_style_left, col_style_right = st.columns(2)
+
+with col_style_left:
+    sub_style = st.selectbox(
+        "Style Phụ Đề (Studio Presets)", 
+        [
+            "🔥 Alex Hormozi (Chữ In Hoa, Viền Đen Siêu Dày, Pop Nảy Chữ)",
+            "✨ YouTube Vlog Pro (Viền Nét Đậm, Shadow 3D Mềm Mại)",
+            "🏷️ Submagic Pill Badge (Hộp Bo Tròn Che Nền Sang Trọng)",
+            "⚡ Cyberpunk Neon Glow (Viền Dạ Quang Phát Sáng Điện Tử)",
+            "🍿 Netflix Cinematic (Thanh Lịch Tối Giản Điện Ảnh)"
+        ], 
+        index=0,
+        help="Chọn phong cách phù hợp với định dạng kênh của bạn: Alex Hormozi cho Shorts/Reels triệu view, Vlog Pro cho du lịch/lifestyle, Submagic cho podcast."
+    )
+    
+    col_anim_1, col_anim_2 = st.columns(2)
+    with col_anim_1:
+        anim_choice = st.selectbox(
+            "Hiệu ứng nảy chữ (Word Animation)",
+            options=[
+                "Nảy chữ phóng to (Pop 115% - Khuyên dùng)",
+                "Nảy chữ mạnh mẽ (Pop 125%)",
+                "Chỉ đổi màu tĩnh (Không nảy)"
+            ],
+            index=0,
+            help="Tạo chuyển động thị giác giật mắt khi từng từ được cất lên, giữ chân người xem lâu hơn."
+        )
+        if "125%" in anim_choice:
+            animation_mode = "pop_strong"
+        elif "115%" in anim_choice:
+            animation_mode = "pop"
+        else:
+            animation_mode = "none"
             
-        margin_v = st.slider(
-            "Vertical Position (Margin Bottom)",
-            min_value=40, max_value=600, value=active_preset["margin_v"], step=10,
-            help="Height in pixels from bottom edge. Default 200-240px leaves room for TikTok caption & action bar."
+    with col_anim_2:
+        text_transform_choice = st.checkbox(
+            "🔤 VIẾT HOA TOÀN BỘ (Shorts/TikTok)", 
+            value=True,
+            help="Tự động viết hoa toàn bộ chữ, phong cách đặc trưng giúp video dễ đọc khi lướt nhanh."
         )
+        text_transform = "uppercase" if text_transform_choice else "original"
 
-    # 4. TAB: TRANSCRIPT EDITOR
-    with tab_editor:
-        if st.session_state.chunks_data:
-            st.caption(f"Editing {len(st.session_state.chunks_data)} spoken segments (Timestamps auto-aligned):")
-            for c_idx, chunk in enumerate(st.session_state.chunks_data):
-                c_text = " ".join(w.get('word', '') for w in chunk)
-                c_start = chunk[0].get('start', 0.0)
-                c_end = chunk[-1].get('end', 0.0)
-                
-                new_text = st.text_input(
-                    f"{c_start:.1f}s – {c_end:.1f}s",
-                    value=c_text,
-                    key=f"editor_chunk_{c_idx}"
-                )
-                if new_text != c_text:
-                    st.session_state.chunks_data[c_idx] = helper_update_chunk_text(chunk, new_text)
-        else:
-            st.info("Upload a video and transcribe to edit subtitle lines.")
-
-    # 5. TAB: ADVANCED
-    with tab_adv:
-        col_a1, col_a2 = st.columns(2)
-        with col_a1:
-            timing_offset = st.slider("Timing Offset (ms)", min_value=-500, max_value=500, value=0, step=25)
-        with col_a2:
-            aspect_choice = st.selectbox("Export Framing", ["Original Aspect Ratio", "Crop/Fit 9:16 (Shorts/TikTok)"], index=0)
-            aspect_mode = "vertical_9_16" if "9:16" in aspect_choice else "original"
-
-    st.markdown('<hr style="border: 0; border-top: 1px solid #1F232D; margin: 16px 0;">', unsafe_allow_html=True)
+    highlight_colors = {
+        "Vàng Chanh Hormozi (#FFE600)": "&H0000E6FF",
+        "Xanh Lá Neon (#00FF66)": "&H0066FF00",
+        "Xanh Cyan Công Nghệ (#00FFFF)": "&H00FFFF00",
+        "Hồng Neon TikTok (#FF007F)": "&H007F00FF",
+        "Đỏ Cam Rực Rỡ (#FF5500)": "&H000055FF",
+        "Trắng Tinh Khôi (#FFFFFF)": "&H00FFFFFF"
+    }
+    selected_color_name = st.selectbox("Màu chữ nổi bật (Active Karaoke Word)", options=list(highlight_colors.keys()), index=0)
+    highlight_color_hex = highlight_colors[selected_color_name]
     
-    # Export Button in Inspector
-    btn_export = st.button("RENDER & EXPORT MASTER MP4", use_container_width=True, type="primary")
+    max_words_per_chunk = st.slider(
+        "Mật độ từ mỗi dòng (Words per line)", 
+        min_value=1, max_value=6, value=3, step=1,
+        help="1-2 từ: Siêu nhanh kích thích thị giác kiểu Alex Hormozi. 3-4 từ: Chuẩn TikTok. 5-6 từ: Kiểu Vlog/Podcast."
+    )
 
-# =========================================================================
-# LEFT COLUMN: VISUAL CANVAS STAGE (Centerpiece Experience)
-# =========================================================================
-with col_stage:
-    st.markdown('<div class="card-header">VISUAL CANVAS STAGE</div>', unsafe_allow_html=True)
+with col_style_right:
+    font_file = st.file_uploader("Tải lên Font chữ tuỳ chỉnh (.ttf, .otf) - Tùy chọn", type=["ttf", "otf"])
+    font_size = st.slider("Kích cỡ chữ (Font Size)", min_value=25, max_value=130, value=75, step=5)
+    margin_v = st.slider("Vị trí phụ đề (Pixel tính từ dưới màn hình lên)", min_value=20, max_value=800, value=200, step=10)
     
-    # Preview Controls Bar
-    col_p_btn, col_p_guide, col_p_seek = st.columns([1.2, 1.2, 1.6])
-    with col_p_btn:
-        btn_preview = st.button("Preview Frame", use_container_width=True)
-    with col_p_guide:
-        show_safe_area = st.checkbox("Safe Area Guide", value=False, help="Displays TikTok/Reels UI overlay boundaries.")
-    with col_p_seek:
-        total_d = st.session_state.video_meta["duration"] if st.session_state.video_meta else 10.0
-        seek_sec = st.slider("Time", min_value=0.0, max_value=float(total_d), value=min(1.5, float(total_d)), step=0.1, label_visibility="collapsed")
-
-    # Render Preview Frame Action
-    if btn_preview:
-        if not video_file:
-            st.warning("Please upload a video file to generate preview.")
-        else:
-            with st.spinner("Rendering single-frame typography..."):
-                t_prev_dir = tempfile.mkdtemp()
-                try:
-                    p_vid = os.path.join(t_prev_dir, "p_in.mp4")
-                    with open(p_vid, "wb") as f:
-                        f.write(video_file.getvalue())
-                        
-                    vw, vh = get_video_dimensions(p_vid)
-                    if aspect_mode == "vertical_9_16":
-                        vw, vh = 1080, 1920
-                        
-                    p_ass = os.path.join(t_prev_dir, "p_sub.ass")
-                    
-                    if st.session_state.chunks_data:
-                        render_chunks = st.session_state.chunks_data
-                    else:
-                        render_chunks = [[
-                            {"word": "CREATING", "start": 0.5, "end": 1.0},
-                            {"word": "VIRAL", "start": 1.0, "end": 1.5},
-                            {"word": "CONTENT", "start": 1.5, "end": 2.2}
-                        ]]
-                        
-                    overrides = {
-                        "font_family": selected_font_family,
-                        "font_size": font_size,
-                        "all_caps": all_caps,
-                        "words_per_line": words_per_line,
-                        "animation_mode": selected_anim,
-                        "highlight_color": highlight_color,
-                        "margin_v": margin_v
-                    }
-                    
-                    generate_ass_subtitle(
-                        transcript_json={},
-                        output_path=p_ass,
-                        video_width=vw,
-                        video_height=vh,
-                        margin_v=margin_v,
-                        highlight_color=highlight_color,
-                        font_name=selected_font_family,
-                        font_size=font_size,
-                        sub_style=active_preset["id"],
-                        sub_offset_ms=timing_offset,
-                        animation_mode=selected_anim,
-                        text_transform="uppercase" if all_caps else "original",
-                        max_words_per_chunk=words_per_line,
-                        pre_chunked_data=render_chunks
-                    )
-                    
-                    p_img = os.path.join(t_prev_dir, "preview.jpg")
-                    generate_preview_frame(
-                        video_in=p_vid,
-                        subtitle_ass=p_ass,
-                        timestamp_sec=seek_sec,
-                        output_img_path=p_img,
-                        aspect_mode=aspect_mode,
-                        show_safe_area=show_safe_area
-                    )
-                    
-                    # Store image in memory or persistent location
-                    with open(p_img, "rb") as img_f:
-                        st.session_state.preview_frame_path = img_f.read()
-                except Exception as e:
-                    st.error(f"Preview render failed: {e}")
-                finally:
-                    shutil.rmtree(t_prev_dir, ignore_errors=True)
-
-    # Visual Display Box
-    if st.session_state.rendered_video_path and os.path.exists(st.session_state.rendered_video_path):
-        st.success("Master Render Complete")
-        st.video(st.session_state.rendered_video_path)
-        with open(st.session_state.rendered_video_path, "rb") as f:
-            v_data = f.read()
-        st.download_button(
-            label="DOWNLOAD COMPLETED MP4",
-            data=v_data,
-            file_name="autosub_master_export.mp4",
-            mime="video/mp4",
-            type="primary",
-            use_container_width=True
+    col_sub_sub1, col_sub_sub2 = st.columns(2)
+    with col_sub_sub1:
+        sub_offset_ms = st.slider(
+            "Độ trễ Phụ đề (ms) [Âm là sớm hơn]", 
+            min_value=-500, max_value=500, value=0, step=25
         )
-    elif st.session_state.preview_frame_path:
-        st.image(st.session_state.preview_frame_path, use_container_width=True)
-    else:
-        # Default placeholder canvas
-        st.markdown("""
-        <div class="preview-stage">
-            <div style="font-size: 2.2rem; color: #2C3240; margin-bottom: 8px;">■</div>
-            <div style="font-size: 0.9rem; font-weight: 600; color: #6D7588;">PREVIEW STAGE READY</div>
-            <div style="font-size: 0.75rem; color: #4B5263; margin-top: 4px;">Click "Preview Frame" above to render instant typography</div>
+    with col_sub_sub2:
+        aspect_choice = st.selectbox(
+            "Tỷ lệ khung hình xuất ra",
+            options=["Giữ nguyên tỷ lệ gốc (Khuyên dùng)", "Ép chuẩn dọc 9:16 (Shorts/TikTok/Reels)"],
+            index=0
+        )
+        aspect_mode = "vertical_9_16" if "9:16" in aspect_choice else "original"
+
+    # CSS Visualizer
+    bottom_pct = (margin_v / 1920) * 100
+    sample_text = "HỌC LẬP TRÌNH" if text_transform == "uppercase" else "Học lập trình"
+    st.markdown(f"""
+    <div style="display: flex; gap: 15px; align-items: center; margin-top: 10px;">
+        <div style="width: 85px; height: 150px; background-color: #1e1e24; border-radius: 8px; position: relative; border: 2px solid #555; overflow: hidden; flex-shrink: 0;">
+            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; opacity: 0.2; font-size: 8px;">Màn hình</div>
+            <div style="position: absolute; bottom: {bottom_pct}%; left: 5%; right: 5%; background: rgba(0,0,0,0.7); color: white; text-align: center; border-radius: 4px; font-size: 8px; padding: 3px; font-weight: bold;">
+                <span style="color: #00E6FF; font-size: 9px;">{sample_text.split()[0]}</span> {' '.join(sample_text.split()[1:])}
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        <div style="font-size: 12px; color: #aaa;">
+            <b>Khung mô phỏng trực quan:</b><br/>
+            Kéo thanh trượt vị trí để canh né thanh công cụ TikTok/Reels mà không che khuôn mặt.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# =========================================================================
-# FINAL EXPORT LOGIC
-# =========================================================================
-if btn_export:
+# Nút Xem Trước Frame Tức Thì
+btn_preview_frame = st.button("👁️ Xem Trước 1 Khung Hình (Instant Preview)", use_container_width=True)
+
+if btn_preview_frame:
     if not video_file:
-        st.error("Please provide a source video before exporting.")
+        st.warning("⚠️ Vui lòng tải lên video để xem trước khung hình!")
     else:
-        t_export = tempfile.mkdtemp()
+        with st.spinner("Đang kết xuất khung hình xem trước..."):
+            temp_dir_prev = tempfile.mkdtemp()
+            try:
+                prev_vid_path = os.path.join(temp_dir_prev, "prev_vid.mp4")
+                with open(prev_vid_path, "wb") as f:
+                    f.write(video_file.getvalue())
+                    
+                prev_font_dir = None
+                prev_font_name = "UVN Ban Tay"
+                if font_file:
+                    prev_font_dir = os.path.join(temp_dir_prev, "fonts")
+                    os.makedirs(prev_font_dir, exist_ok=True)
+                    prev_font_path = os.path.join(prev_font_dir, font_file.name)
+                    with open(prev_font_path, "wb") as f:
+                        f.write(font_file.getvalue())
+                    try:
+                        font_obj = TTFont(prev_font_path)
+                        for record in font_obj['name'].names:
+                            if record.nameID == 1:
+                                prev_font_name = record.toUnicode()
+                                break
+                    except Exception:
+                        prev_font_name = os.path.splitext(font_file.name)[0]
+                else:
+                    if os.path.exists("/Users/kevinduong/Downloads/font"):
+                        prev_font_dir = "/Users/kevinduong/Downloads/font"
+                        
+                vid_w, vid_h = get_video_dimensions(prev_vid_path)
+                if aspect_mode == "vertical_9_16":
+                    vid_w, vid_h = 1080, 1920
+                    
+                prev_sub_path = os.path.join(temp_dir_prev, "prev.ass")
+                
+                if st.session_state.chunks_data:
+                    preview_chunks = st.session_state.chunks_data
+                    seek_t = preview_chunks[0][0]['start'] + 0.2 if preview_chunks else 1.5
+                else:
+                    preview_chunks = [[
+                        {"word": "XEM", "start": 1.0, "end": 1.4},
+                        {"word": "TRƯỚC", "start": 1.4, "end": 1.8},
+                        {"word": "PHỤ", "start": 1.8, "end": 2.2},
+                        {"word": "ĐỀ", "start": 2.2, "end": 2.6}
+                    ]]
+                    seek_t = 1.6
+                    
+                generate_ass_subtitle(
+                    transcript_json={},
+                    output_path=prev_sub_path,
+                    video_width=vid_w,
+                    video_height=vid_h,
+                    margin_v=margin_v,
+                    highlight_color=highlight_color_hex,
+                    font_name=prev_font_name,
+                    font_size=font_size,
+                    sub_style=sub_style,
+                    sub_offset_ms=sub_offset_ms,
+                    animation_mode=animation_mode,
+                    text_transform=text_transform,
+                    max_words_per_chunk=max_words_per_chunk,
+                    pre_chunked_data=preview_chunks
+                )
+                
+                prev_img_path = os.path.join(temp_dir_prev, "preview.jpg")
+                generate_preview_frame(
+                    video_in=prev_vid_path,
+                    subtitle_ass=prev_sub_path,
+                    timestamp_sec=seek_t,
+                    output_img_path=prev_img_path,
+                    font_dir=prev_font_dir,
+                    aspect_mode=aspect_mode
+                )
+                
+                col_prev_l, col_prev_c, col_prev_r = st.columns([1, 1.6, 1])
+                with col_prev_c:
+                    st.image(prev_img_path, caption=f"Khung hình mẫu (Font: {prev_font_name}, Size: {font_size}, Preset: {sub_style.split()[1]})", use_container_width=True)
+            except Exception as e:
+                st.error(f"Không thể tạo ảnh xem trước: {e}")
+            finally:
+                shutil.rmtree(temp_dir_prev, ignore_errors=True)
+
+# ==========================================
+# BƯỚC 4: XUẤT VIDEO HOÀN CHỈNH
+# ==========================================
+st.markdown("---")
+st.markdown("### 🚀 Bước 4: Xuất Video Hoàn Chỉnh")
+
+btn_render = st.button("⚡ XUẤT VIDEO HOÀN TẤT", use_container_width=True, type="primary")
+
+if btn_render:
+    if not video_file:
+        st.error("⚠️ Vui lòng tải lên file Video gốc!")
+    else:
+        temp_dir = tempfile.mkdtemp()
         try:
-            progress_bar = st.progress(0, text="Preparing master export pipeline...")
-            export_vid = os.path.join(t_export, "export_in.mp4")
-            with open(export_vid, "wb") as f:
+            progress_bar = st.progress(0, text="Bước 1/4: Đang chuẩn bị dữ liệu...")
+            video_path = os.path.join(temp_dir, "input_video.mp4")
+            output_video_path = os.path.join(temp_dir, "output_video.mp4")
+            subtitle_path = os.path.join(temp_dir, "subtitles.ass")
+            
+            with open(video_path, "wb") as f:
                 f.write(video_file.getvalue())
                 
-            export_aud = None
+            audio_path = None
             if audio_file:
-                export_aud = os.path.join(t_export, "export_aud.mp3")
-                with open(export_aud, "wb") as f:
+                audio_path = os.path.join(temp_dir, "input_audio.mp3")
+                with open(audio_path, "wb") as f:
                     f.write(audio_file.getvalue())
                     
-            progress_bar.progress(25, text="Synchronizing speech rhythm & alignment...")
-            if st.session_state.chunks_data and st.session_state.transcribed_video_name == video_file.name:
-                final_chunks = st.session_state.chunks_data
+            font_dir = None
+            font_name = "UVN Ban Tay"
+            if font_file:
+                font_dir = os.path.join(temp_dir, "fonts")
+                os.makedirs(font_dir, exist_ok=True)
+                font_path = os.path.join(font_dir, font_file.name)
+                with open(font_path, "wb") as f:
+                    f.write(font_file.getvalue())
+                try:
+                    font_obj = TTFont(font_path)
+                    for record in font_obj['name'].names:
+                        if record.nameID == 1:
+                            font_name = record.toUnicode()
+                            break
+                except Exception:
+                    font_name = os.path.splitext(font_file.name)[0]
             else:
-                target_aud = export_aud
-                if not target_aud:
-                    target_aud = os.path.join(t_export, "extracted_aud.mp3")
-                    extract_video_audio(export_vid, target_aud)
-                t_res = transcribe_audio(target_aud, model_name=whisper_model, language="vi")
-                t_words = extract_flat_words_from_transcript(t_res)
-                final_chunks = create_smart_rhythm_chunks(t_words, max_words=words_per_line)
-                st.session_state.chunks_data = final_chunks
+                if os.path.exists("/Users/kevinduong/Downloads/font"):
+                    font_dir = "/Users/kevinduong/Downloads/font"
 
-            progress_bar.progress(50, text="Generating master Advanced SubStation Alpha script...")
-            vw, vh = get_video_dimensions(export_vid)
+            progress_bar.progress(25, text="Bước 2/4: Đang bóc băng và đồng bộ nhịp phụ đề...")
+            
+            if st.session_state.chunks_data and st.session_state.transcribed_video_name == video_file.name:
+                active_chunks = st.session_state.chunks_data
+            else:
+                target_audio_for_transcribe = audio_path
+                if not target_audio_for_transcribe:
+                    extracted_path = os.path.join(temp_dir, "extracted_audio.mp3")
+                    extract_video_audio(video_path, extracted_path)
+                    target_audio_for_transcribe = extracted_path
+                audio_dur = get_audio_duration(target_audio_for_transcribe)
+                if "Không cần AI" in sync_mode and custom_script and custom_script.strip():
+                    aligned_words = align_user_script_to_audio(custom_script, [], audio_duration=audio_dur)
+                else:
+                    transcript = transcribe_audio(target_audio_for_transcribe, model_name=whisper_model_choice, language="vi")
+                    flat_words = extract_flat_words_from_transcript(transcript)
+                    if custom_script and custom_script.strip():
+                        aligned_words = align_user_script_to_audio(custom_script, flat_words, audio_duration=audio_dur)
+                    else:
+                        aligned_words = flat_words
+                        
+                active_chunks = create_smart_rhythm_chunks(aligned_words, max_words=max_words_per_chunk)
+                st.session_state.chunks_data = active_chunks
+                st.session_state.transcribed_video_name = video_file.name
+
+            progress_bar.progress(50, text="Bước 3/4: Đang tạo file phụ đề ASS...")
+            vid_w, vid_h = get_video_dimensions(video_path)
             if aspect_mode == "vertical_9_16":
-                vw, vh = 1080, 1920
+                vid_w, vid_h = 1080, 1920
                 
-            final_ass = os.path.join(t_export, "final_sub.ass")
             generate_ass_subtitle(
                 transcript_json={},
-                output_path=final_ass,
-                video_width=vw,
-                video_height=vh,
+                output_path=subtitle_path,
+                video_width=vid_w,
+                video_height=vid_h,
                 margin_v=margin_v,
-                highlight_color=highlight_color,
-                font_name=selected_font_family,
+                highlight_color=highlight_color_hex,
+                font_name=font_name,
                 font_size=font_size,
-                sub_style=active_preset["id"],
-                sub_offset_ms=timing_offset,
-                animation_mode=selected_anim,
-                text_transform="uppercase" if all_caps else "original",
-                max_words_per_chunk=words_per_line,
-                pre_chunked_data=final_chunks
+                sub_style=sub_style,
+                sub_offset_ms=sub_offset_ms,
+                animation_mode=animation_mode,
+                text_transform=text_transform,
+                max_words_per_chunk=max_words_per_chunk,
+                pre_chunked_data=active_chunks
             )
 
-            progress_bar.progress(70, text="Burning subtitles with libass & passthrough audio...")
-            final_out = os.path.join(tempfile.gettempdir(), "autosub_pro_finished.mp4")
-            
-            if export_aud:
+            progress_bar.progress(70, text="Bước 4/4: Đang xử lý Video và bọc phụ đề bằng FFmpeg...")
+            if audio_path:
                 process_video_with_audio_replace(
-                    video_in=export_vid,
-                    audio_in=export_aud,
-                    subtitle_ass=final_ass,
-                    output_path=final_out,
+                    video_in=video_path,
+                    audio_in=audio_path,
+                    subtitle_ass=subtitle_path,
+                    output_path=output_video_path,
+                    font_dir=font_dir,
                     aspect_mode=aspect_mode,
                     enhance_quality=False
                 )
             else:
                 process_video_subtitles_only(
-                    video_in=export_vid,
-                    subtitle_ass=final_ass,
-                    output_path=final_out,
+                    video_in=video_path,
+                    subtitle_ass=subtitle_path,
+                    output_path=output_video_path,
+                    font_dir=font_dir,
                     aspect_mode=aspect_mode,
                     enhance_quality=False
                 )
 
-            progress_bar.progress(100, text="Export complete!")
-            st.session_state.rendered_video_path = final_out
-            st.rerun()
+            progress_bar.progress(100, text="Hoàn tất!")
+            st.success("🎉 Xuất Video thành công! Âm thanh giữ nguyên 100% chất lượng gốc.")
+            
+            st.markdown("### 🍿 Video Hoàn Chỉnh Của Bạn")
+            col_l, col_c, col_r = st.columns([1, 1.6, 1])
+            with col_c:
+                with open(output_video_path, "rb") as f:
+                    v_bytes = f.read()
+                st.video(v_bytes)
+                st.download_button(
+                    label="⬇️ TẢI XUỐNG VIDEO (.MP4)",
+                    data=v_bytes,
+                    file_name="autosub_pro_finished.mp4",
+                    mime="video/mp4",
+                    type="primary",
+                    use_container_width=True
+                )
         except Exception as e:
-            st.error(f"Export processing failed: {e}")
+            st.error(f"Đã xảy ra lỗi trong quá trình xử lý: {e}")
         finally:
-            shutil.rmtree(t_export, ignore_errors=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)

@@ -3,9 +3,6 @@ import os
 import re
 import difflib
 
-from core.subtitle_renderer import render_ass_script
-from core.presets import get_preset
-
 # Model cache to avoid reloading on every request
 _whisper_models = {}
 
@@ -15,6 +12,7 @@ def get_whisper_model(model_name="base"):
     """
     global _whisper_models
     if model_name not in _whisper_models:
+        # Load on CPU with float32 for maximum stability across platforms
         _whisper_models[model_name] = whisper.load_model(model_name, device="cpu")
     return _whisper_models[model_name]
 
@@ -107,6 +105,7 @@ def extract_flat_words_from_transcript(transcript_json):
     for segment in segments:
         words = segment.get("words", [])
         if not words:
+            # Fallback if no word timestamps, split text and distribute time
             text = segment.get("text", "").strip()
             word_list = text.split()
             seg_start = segment.get("start", 0)
@@ -127,131 +126,254 @@ def extract_flat_words_from_transcript(transcript_json):
                 })
     return whisper_words
 
+def align_user_script_to_audio(script_text, whisper_words, audio_duration=10.0):
+    """
+    Forced alignment: Maps user-provided exact script onto Whisper's audio timestamps.
+    Ensures 100% correct spelling, punctuation, and wording while keeping natural audio sync.
+    """
+    if not script_text or not script_text.strip():
+        return whisper_words
+        
+    user_words_raw = re.findall(r'\S+', script_text.strip())
+    if not user_words_raw:
+        return whisper_words
+        
+    aligned_user_words = [{"word": w, "start": None, "end": None} for w in user_words_raw]
+    
+    if not whisper_words:
+        dur = float(audio_duration) if audio_duration else 5.0
+        word_dur = dur / len(user_words_raw)
+        for i, uw in enumerate(aligned_user_words):
+            uw['start'] = i * word_dur
+            uw['end'] = (i + 1) * word_dur
+        return aligned_user_words
+        
+    whisper_texts = [re.sub(r'[^\w\s]', '', w['word'].strip().lower()) for w in whisper_words]
+    user_texts = [re.sub(r'[^\w\s]', '', w.strip().lower()) for w in user_words_raw]
+    
+    sm = difflib.SequenceMatcher(None, whisper_texts, user_texts)
+    
+    # Gán mốc thời gian cho các từ khớp chính xác
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == 'equal':
+            for i, j in zip(range(i1, i2), range(j1, j2)):
+                if i < len(whisper_words) and j < len(aligned_user_words):
+                    aligned_user_words[j]['start'] = float(whisper_words[i].get('start', 0.0))
+                    aligned_user_words[j]['end'] = float(whisper_words[i].get('end', 0.0))
+                    
+    # Nội suy thông minh cho các từ Whisper nghe nhầm hoặc bỏ sót
+    i = 0
+    last_known_end = 0.0
+    while i < len(aligned_user_words):
+        if aligned_user_words[i]['start'] is not None:
+            last_known_end = aligned_user_words[i]['end']
+            i += 1
+            continue
+            
+        j = i
+        while j < len(aligned_user_words) and aligned_user_words[j]['start'] is None:
+            j += 1
+            
+        if j < len(aligned_user_words):
+            next_known_start = aligned_user_words[j]['start']
+        else:
+            if audio_duration and audio_duration > last_known_end:
+                next_known_start = audio_duration
+            else:
+                next_known_start = last_known_end + (j - i) * 0.35
+                
+        if next_known_start < last_known_end:
+            next_known_start = last_known_end
+            
+        gap = next_known_start - last_known_end
+        dur_per_word = gap / (j - i) if (j - i) > 0 else 0.3
+        dur_per_word = min(dur_per_word, 0.6)
+        
+        for k in range(i, j):
+            aligned_user_words[k]['start'] = last_known_end + (k - i) * dur_per_word
+            aligned_user_words[k]['end'] = aligned_user_words[k]['start'] + dur_per_word
+            
+        last_known_end = aligned_user_words[j - 1]['end']
+        i = j
+        
+    return aligned_user_words
+
 def generate_ass_subtitle(
     transcript_json, 
     output_path, 
     video_width=1080, 
     video_height=1920, 
-    margin_v=220, 
-    outline_size=None, 
+    margin_v=150, 
+    outline_size=8, 
     correct_text="", 
-    highlight_color=None, 
+    highlight_color="&H0000FFFF", 
     audio_duration=10.0, 
-    font_name=None, 
-    font_size=None, 
-    sub_style="hormozi", 
+    font_name="UVN Ban Tay", 
+    font_size=65, 
+    sub_style="🔥 Alex Hormozi", 
     sub_offset_ms=0,
-    animation_mode=None,
-    text_transform=None,
-    max_words_per_chunk=3,
+    animation_mode="pop",
+    text_transform="uppercase",
+    max_words_per_chunk=4,
     pre_chunked_data=None
 ):
     """
-    Orchestrates subtitle chunking, timing alignment, and delegates styling to core.subtitle_renderer.
+    Generates an optimized .ass subtitle file with 5 studio-grade presets, 
+    pop bounce animations, and customizable typography.
     """
-    # 1. Determine preset id
-    clean_style = str(sub_style).lower()
-    if "hormozi" in clean_style:
-        preset_id = "hormozi"
-    elif "vlog" in clean_style:
-        preset_id = "vlog_pro"
-    elif "pill" in clean_style or "tiktok" in clean_style:
-        preset_id = "pill_badge"
-    elif "neon" in clean_style or "cyberpunk" in clean_style:
-        preset_id = "neon_glow"
-    elif "cinematic" in clean_style or "netflix" in clean_style:
-        preset_id = "cinematic"
+    # 1. Định nghĩa Style ASS cho 5 Presets Viral Thịnh Hành
+    if "Alex Hormozi" in sub_style:
+        # Chữ đậm nét, viền đen dày dặn 10px, bóng đổ 3D mạnh mẽ
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,"
+            f"-1,0,0,0,100,100,0,0,1,10,3,2,20,20,{margin_v},1"
+        )
+    elif "YouTube Vlog" in sub_style:
+        # Chữ sắc nét, viền đen bo tròn mềm mại, bóng đổ tự nhiên
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
+            f"-1,0,0,0,100,100,0,0,1,6,2,2,20,20,{margin_v},1"
+        )
+    elif "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
+        # Hộp bo tròn (Pill Badge) màu đen mờ sang trọng ở Layer 0 che sạch nền
+        styles_str = (
+            f"Style: MaskStyle,{font_name},{font_size},"
+            f"&HFF000000,&HFF000000,&HA0000000,&HA0000000,"
+            f"-1,0,0,0,100,100,0,0,3,10,0,2,20,20,{margin_v},1\n"
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,"
+            f"-1,0,0,0,100,100,0,0,1,4,1,2,20,20,{margin_v},1"
+        )
+    elif "Cyberpunk" in sub_style:
+        # Viền tím neon phát sáng, bóng dạ quang cyan điện tử
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00550055,&H80FF00FF,"
+            f"-1,0,0,0,100,100,0,0,1,6,4,2,20,20,{margin_v},1"
+        )
     else:
-        preset_id = "hormozi"
+        # Netflix Cinematic: Phụ đề phim tài liệu thanh lịch, tĩnh, không karaoke
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
+            f"0,0,0,0,100,100,0,0,1,3,1,2,20,20,{margin_v},1"
+        )
 
-    # 2. Process Chunks
+    ass_content = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {video_width}
+PlayResY: {video_height}
+WrapStyle: 1
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+{styles_str}
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    
+    # 2. Xử lý chunks phụ đề
     if pre_chunked_data:
         chunks = pre_chunked_data
     else:
         whisper_words = extract_flat_words_from_transcript(transcript_json)
         
-        # FORCED ALIGNMENT (DIFFLIB EXACT MATCHING)
         if correct_text and correct_text.strip():
-            user_words_raw = re.findall(r'\S+', correct_text.strip())
-            aligned_user_words = [{"word": w, "start": None, "end": None} for w in user_words_raw]
-            
-            whisper_texts = [re.sub(r'[^\w\s]', '', w['word'].strip().lower()) for w in whisper_words]
-            user_texts = [re.sub(r'[^\w\s]', '', w.strip().lower()) for w in user_words_raw]
-            
-            sm = difflib.SequenceMatcher(None, whisper_texts, user_texts)
-            for tag, i1, i2, j1, j2 in sm.get_opcodes():
-                if tag == 'equal':
-                    for i, j in zip(range(i1, i2), range(j1, j2)):
-                        if i < len(whisper_words) and j < len(aligned_user_words):
-                            aligned_user_words[j]['start'] = whisper_words[i].get('start', 0.0)
-                            aligned_user_words[j]['end'] = whisper_words[i].get('end', 0.0)
-                            
-            i = 0
-            last_known_end = 0.0
-            while i < len(aligned_user_words):
-                if aligned_user_words[i]['start'] is not None:
-                    last_known_end = aligned_user_words[i]['end']
-                    i += 1
-                    continue
-                    
-                j = i
-                while j < len(aligned_user_words) and aligned_user_words[j]['start'] is None:
-                    j += 1
-                    
-                if j < len(aligned_user_words):
-                    next_known_start = aligned_user_words[j]['start']
-                else:
-                    next_known_start = last_known_end + (j - i) * 0.3
-                    
-                if next_known_start < last_known_end:
-                    next_known_start = last_known_end
-                    
-                gap = next_known_start - last_known_end
-                dur_per_word = gap / (j - i) if (j - i) > 0 else 0.3
-                dur_per_word = min(dur_per_word, 0.5)
-                
-                for k in range(i, j):
-                    aligned_user_words[k]['start'] = last_known_end + (k - i) * dur_per_word
-                    aligned_user_words[k]['end'] = aligned_user_words[k]['start'] + dur_per_word
-                    
-                last_known_end = aligned_user_words[j-1]['end']
-                i = j
-                
-            words_to_chunk = aligned_user_words
+            words_to_chunk = align_user_script_to_audio(correct_text, whisper_words, audio_duration=audio_duration)
         else:
             words_to_chunk = whisper_words
             
-        # Apply global offset slider
+        # Tinh chỉnh độ trễ offset
         offset_sec = sub_offset_ms / 1000.0
         for w in words_to_chunk:
             w['start'] = max(0.0, w['start'] + offset_sec)
             w['end'] = max(0.0, w['end'] + offset_sec)
             
+        # Chia cụm nhịp thở thông minh theo max_words_per_chunk
         chunks = create_smart_rhythm_chunks(words_to_chunk, max_words=max_words_per_chunk)
+        
+    # 3. Thiết lập animation tags cho từ đang active
+    if animation_mode == "pop":
+        scale_tag = r"\fscx115\fscy115"
+        reset_scale = r"\fscx100\fscy100"
+    elif animation_mode == "pop_strong":
+        scale_tag = r"\fscx125\fscy125"
+        reset_scale = r"\fscx100\fscy100"
+    else:
+        scale_tag = ""
+        reset_scale = ""
 
-    # 3. Build overrides
-    overrides = {}
-    if font_name:
-        overrides["font_family"] = font_name
-    if font_size:
-        overrides["font_size"] = font_size
-    if margin_v is not None:
-        overrides["margin_v"] = margin_v
-    if outline_size is not None:
-        overrides["outline_width"] = outline_size
-    if highlight_color:
-        overrides["highlight_color"] = highlight_color
-    if animation_mode:
-        overrides["animation_mode"] = animation_mode
-    if text_transform:
-        overrides["all_caps"] = (text_transform == "uppercase")
-
-    # 4. Delegate to dedicated ASS motion renderer
-    return render_ass_script(
-        chunks=chunks,
-        output_path=output_path,
-        preset_id=preset_id,
-        custom_overrides=overrides,
-        video_width=video_width,
-        video_height=video_height
-    )
+    # 4. Xuất các dòng sự kiện Dialogue
+    for chunk in chunks:
+        if not chunk: 
+            continue
+        chunk_start = chunk[0]['start']
+        chunk_end = chunk[-1]['end']
+        
+        start_str = format_ass_time(chunk_start)
+        end_str = format_ass_time(chunk_end)
+        
+        # Xử lý định dạng chữ (In hoa vs nguyên bản)
+        formatted_words = []
+        for w in chunk:
+            raw_w = w['word'].replace('\n', '')
+            formatted_words.append(raw_w.upper() if text_transform == "uppercase" else raw_w)
+            
+        full_text = ' '.join(formatted_words)
+        
+        # Layer 0: Mask background box (Submagic Pill Badge hoặc TikTok Karaoke)
+        if "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
+            ass_content += f"Dialogue: 0,{start_str},{end_str},MaskStyle,,0,0,0,,{{\\alpha&HFF&}}{full_text}\n"
+            
+        # Netflix Cinematic: Hiển thị nguyên câu tĩnh, không đổi màu từng từ
+        if "Netflix" in sub_style:
+            ass_content += f"Dialogue: 1,{start_str},{end_str},TextStyle,,0,0,0,,{full_text}\n"
+            continue
+        
+        # Layer 1: Karaoke word highlight tracking kèm Pop Animation
+        last_time = chunk_start
+        for i, target_word in enumerate(chunk):
+            w_start = max(target_word['start'], last_time)
+            
+            # Khống chế thời gian kết thúc không đè lên từ kế tiếp
+            if i < len(chunk) - 1:
+                w_end = min(target_word['end'], chunk[i+1]['start'])
+            else:
+                w_end = target_word['end']
+                
+            w_end = max(w_start + 0.01, w_end)
+            
+            # Khoảng nghỉ trước từ này: in câu trung tính màu trắng
+            if w_start > last_time + 0.01:
+                gap_start = format_ass_time(last_time)
+                gap_end = format_ass_time(w_start)
+                ass_content += f"Dialogue: 1,{gap_start},{gap_end},TextStyle,,0,0,0,,{full_text}\n"
+                
+            # Từ đang đọc: Highlight màu nổi bật + Hiệu ứng nảy Pop nếu có
+            word_start_str = format_ass_time(w_start)
+            word_end_str = format_ass_time(w_end)
+            
+            parts = []
+            for j, w_text in enumerate(formatted_words):
+                if j == i:
+                    parts.append(f"{{\\c{highlight_color}&{scale_tag}}}{w_text}{{\\c&H00FFFFFF&{reset_scale}}}")
+                else:
+                    parts.append(w_text)
+            line_text = ' '.join(parts)
+            ass_content += f"Dialogue: 1,{word_start_str},{word_end_str},TextStyle,,0,0,0,,{line_text}\n"
+            
+            last_time = w_end
+            
+        # Khoảng nghỉ cuối câu nếu còn dư thời gian
+        if chunk_end > last_time + 0.01:
+            gap_start = format_ass_time(last_time)
+            gap_end = format_ass_time(chunk_end)
+            ass_content += f"Dialogue: 1,{gap_start},{gap_end},TextStyle,,0,0,0,,{full_text}\n"
+            
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(ass_content)
+        
+    return output_path
