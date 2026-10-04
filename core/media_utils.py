@@ -73,7 +73,7 @@ def extract_video_audio(video_path, output_audio_path):
         raise RuntimeError(f"Could not extract audio with ffmpeg: {process.stderr}")
     return output_audio_path
 
-def generate_preview_frame(video_in, subtitle_ass, timestamp_sec=1.5, output_img_path=None, font_dir=None, aspect_mode="original"):
+def generate_preview_frame(video_in, subtitle_ass, timestamp_sec=1.5, output_img_path=None, font_dir=None, aspect_mode="original", show_safe_area=False):
     """
     Extracts a single representative video frame and burns the subtitles on it.
     Fast (< 1 second) execution for live visual feedback in UI.
@@ -90,6 +90,11 @@ def generate_preview_frame(video_in, subtitle_ass, timestamp_sec=1.5, output_img
         vf_filters.append("scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black")
     
     vf_filters.append(f"ass='{sub_path_escaped}'{font_opt}")
+    
+    if show_safe_area:
+        # TikTok / Reels UI Safe Zone Guides (Green/Cyan safe box, Red bottom danger zone)
+        vf_filters.append("drawbox=x=40:y=220:w=900:h=1320:color=cyan@0.6:t=3,drawbox=x=0:y=1540:w=1080:h=380:color=red@0.2:t=fill")
+        
     filter_str = ",".join(vf_filters)
     
     command = [
@@ -105,7 +110,6 @@ def generate_preview_frame(video_in, subtitle_ass, timestamp_sec=1.5, output_img
     
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if process.returncode != 0:
-        # Fallback without subtitle filter if ass parsing failed
         fallback_cmd = [
             imageio_ffmpeg.get_ffmpeg_exe(),
             "-y",
@@ -118,6 +122,7 @@ def generate_preview_frame(video_in, subtitle_ass, timestamp_sec=1.5, output_img
         subprocess.run(fallback_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         
     return output_img_path
+
 
 def process_video_subtitles_only(
     video_in, 
@@ -244,3 +249,4 @@ def process_video_with_audio_replace(
 
 # Backward compatibility alias
 process_video = process_video_with_audio_replace
+burn_subtitles_to_video = process_video_subtitles_only

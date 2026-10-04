@@ -1,19 +1,16 @@
-# Danh Sách Nhiệm Vụ: Nâng Cấp Style Phụ Đề Chuẩn Studio
+# Danh Sách Nhiệm Vụ: AutoSub Pro Studio Overhaul
 
-- [x] **Task 1: Nâng cấp `core/subtitle_engine.py`**
-  - [x] Thêm cấu hình Style cho 5 Presets: Alex Hormozi, YouTube Vlog Pro, Submagic Pill Badge, Cyberpunk Neon Glow, Netflix Cinematic.
-  - [x] Hỗ trợ `animation_mode` ("pop" 115%, "pop_strong" 125%, "none").
-  - [x] Hỗ trợ `text_transform` ("uppercase" vs "original").
-  - [x] Hỗ trợ `max_words_per_chunk` (1-6 từ).
-- [x] **Task 2: Cập nhật giao diện `app.py`**
-  - [x] Thêm dropdown chọn 5 Presets thịnh hành.
-  - [x] Thêm công tắc Viết Hoa Toàn Bộ (ALL-CAPS).
-  - [x] Thêm tùy chọn hiệu ứng nảy chữ (Pop Animation).
-  - [x] Thêm thanh trượt số từ mỗi dòng (Words per line: 1-6 từ).
-  - [x] Bổ sung bảng màu Highlight phong phú.
-- [x] **Task 3: Kiểm thử tự động & Xác minh E2E**
-  - [x] Chạy test tạo ASS và frame preview cho tất cả 5 presets.
-  - [x] Đảm bảo FFmpeg render không gặp lỗi thẻ ASS.
-- [x] **Task 4: Cập nhật Walkthrough & Git Push**
-  - [x] Ghi lại hướng dẫn sử dụng và cập nhật Walkthrough.
-  - [x] Commit và push lên GitHub.
+- [x] **Phase 1: Module Presets & Fonts**
+  - [x] Tạo `core/presets.py` định nghĩa 5 Design Systems độc lập.
+  - [x] Tạo `core/fonts.py` với font inspector, metadata parser, và fallback system.
+- [x] **Phase 2: Subtitle Renderer & Motion Engine**
+  - [x] Tạo `core/subtitle_renderer.py` với motion curves đàn hồi, letter-spacing, mask pill badge.
+  - [x] Tích hợp renderer vào `core/subtitle_engine.py` (bảo toàn 100% thuật toán chunking & alignment).
+- [x] **Phase 3: Safe Area Overlay & Media Pipeline**
+  - [x] Cập nhật `core/media_utils.py` bổ sung Safe Area Guides cho preview 9:16.
+- [x] **Phase 4: Redesign Studio UI**
+  - [x] Tái thiết kế `app.py` thành bố cục 2 cột Studio Canvas (Stage ở trung tâm, Inspector bên phải).
+  - [x] Áp dụng Dark Studio Design System (`#0B0C0F`, `#13151A`, `#191C22`).
+- [ ] **Phase 5: Kiểm Thử & Xuất Bản**
+  - [x] Chạy E2E automated test cho cả 5 presets.
+  - [ ] Cập nhật Walkthrough, commit và push lên GitHub.
