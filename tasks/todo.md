@@ -1,16 +1,18 @@
-# Danh Sách Nhiệm Vụ: AutoSub Pro Studio Overhaul
+# Danh Sách Nhiệm Vụ: Tái Thiết Kế Toàn Diện UI/UX AutoSub Studio Pro
 
-- [x] **Phase 1: Module Presets & Fonts**
-  - [x] Tạo `core/presets.py` định nghĩa 5 Design Systems độc lập.
-  - [x] Tạo `core/fonts.py` với font inspector, metadata parser, và fallback system.
-- [x] **Phase 2: Subtitle Renderer & Motion Engine**
-  - [x] Tạo `core/subtitle_renderer.py` với motion curves đàn hồi, letter-spacing, mask pill badge.
-  - [x] Tích hợp renderer vào `core/subtitle_engine.py` (bảo toàn 100% thuật toán chunking & alignment).
-- [x] **Phase 3: Safe Area Overlay & Media Pipeline**
-  - [x] Cập nhật `core/media_utils.py` bổ sung Safe Area Guides cho preview 9:16.
-- [x] **Phase 4: Redesign Studio UI**
-  - [x] Tái thiết kế `app.py` thành bố cục 2 cột Studio Canvas (Stage ở trung tâm, Inspector bên phải).
-  - [x] Áp dụng Dark Studio Design System (`#0B0C0F`, `#13151A`, `#191C22`).
-- [x] **Phase 5: Kiểm Thử & Xuất Bản**
-  - [x] Chạy E2E automated test cho cả 5 presets.
-  - [x] Cập nhật Walkthrough, commit và push lên GitHub.
+- [x] **Task 1: Lập Kế Hoạch & Thiết Kế Kiến Trúc Studio**
+  - [x] Soạn thảo `implementation_plan.md` với tiêu chuẩn Senior Product Designer.
+  - [x] Trình người dùng phê duyệt kế hoạch.
+- [x] **Task 2: Triển Khai Hệ Thống Design Tokens & Studio Dark CSS**
+  - [x] Cài đặt bảng màu Studio: `#0B0E14` (Deep Canvas), `#161B22` (Elevated Card), `#30363D` (Border), `#6366F1` (Indigo/Purple CTA).
+  - [x] Tạo thanh Brand Bar với badge phiên bản và hiệu ứng gradient chữ.
+  - [x] Tạo khung mô phỏng Smartphone Studio Mockup tương tác với Notch và tỷ lệ 9:16.
+- [x] **Task 3: Tái Cấu Trúc Thành 4 Studio Tabs Chuyên Nghiệp**
+  - [x] Tab 1: `📥 Nhập Media & Kịch Bản` (Upload 2 cột cân xứng, chế độ đồng bộ, kịch bản chính xác).
+  - [x] Tab 2: `📝 Soát Lời Thoại` (Thống kê số phân đoạn/thời lượng/wpm, tìm kiếm từ, thẻ timecode trực quan).
+  - [x] Tab 3: `🎨 Studio Styling & Mockup` (5 Studio Presets, Accordion Typography & Motion, Smartphone Mockup tương tác, Frame preview FFmpeg <1s).
+  - [x] Tab 4: `🚀 Xuất Video Hoàn Chỉnh` (Tóm tắt thông số, Render tiến trình 4 bước, video player cân đối).
+- [x] **Task 4: Kiểm Thử & Kiểm Tra Cú Pháp**
+  - [x] `python3 -m py_compile app.py` thành công 100%.
+- [ ] **Task 5: Git Commit & Cập Nhật Walkthrough**
+  - [ ] Commit thay đổi vào git repository.
