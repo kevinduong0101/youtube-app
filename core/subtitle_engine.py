@@ -132,43 +132,61 @@ def generate_ass_subtitle(
     video_width=1080, 
     video_height=1920, 
     margin_v=150, 
-    outline_size=6, 
+    outline_size=8, 
     correct_text="", 
     highlight_color="&H0000FFFF", 
     audio_duration=10.0, 
     font_name="UVN Ban Tay", 
     font_size=65, 
-    sub_style="YouTube Vlog", 
+    sub_style="🔥 Alex Hormozi", 
     sub_offset_ms=0,
+    animation_mode="pop",
+    text_transform="uppercase",
+    max_words_per_chunk=4,
     pre_chunked_data=None
 ):
     """
-    Generates an optimized .ass subtitle file with karaoke tracking and custom styles.
+    Generates an optimized .ass subtitle file with 5 studio-grade presets, 
+    pop bounce animations, and customizable typography.
     """
-    # Define ASS Styles based on selected preset
-    if sub_style == "YouTube Vlog":
-        # Crisp white text with thick black outline and soft shadow
+    # 1. Định nghĩa Style ASS cho 5 Presets Viral Thịnh Hành
+    if "Alex Hormozi" in sub_style:
+        # Chữ đậm nét, viền đen dày dặn 10px, bóng đổ 3D mạnh mẽ
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
-            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,"
-            f"-1,0,0,0,100,100,0,0,1,{outline_size},2,2,20,20,{margin_v},1"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,"
+            f"-1,0,0,0,100,100,0,0,1,10,3,2,20,20,{margin_v},1"
         )
-    elif sub_style == "Netflix Style":
-        # Classic clean movie subtitles, thin outline, no karaoke bounce
+    elif "YouTube Vlog" in sub_style:
+        # Chữ sắc nét, viền đen bo tròn mềm mại, bóng đổ tự nhiên
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
+            f"-1,0,0,0,100,100,0,0,1,6,2,2,20,20,{margin_v},1"
+        )
+    elif "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
+        # Hộp bo tròn (Pill Badge) màu đen mờ sang trọng ở Layer 0 che sạch nền
+        styles_str = (
+            f"Style: MaskStyle,{font_name},{font_size},"
+            f"&HFF000000,&HFF000000,&HA0000000,&HA0000000,"
+            f"-1,0,0,0,100,100,0,0,3,10,0,2,20,20,{margin_v},1\n"
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,"
+            f"-1,0,0,0,100,100,0,0,1,4,1,2,20,20,{margin_v},1"
+        )
+    elif "Cyberpunk" in sub_style:
+        # Viền tím neon phát sáng, bóng dạ quang cyan điện tử
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00550055,&H80FF00FF,"
+            f"-1,0,0,0,100,100,0,0,1,6,4,2,20,20,{margin_v},1"
+        )
+    else:
+        # Netflix Cinematic: Phụ đề phim tài liệu thanh lịch, tĩnh, không karaoke
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
             f"0,0,0,0,100,100,0,0,1,3,1,2,20,20,{margin_v},1"
-        )
-    else:
-        # TikTok Karaoke (Mask box on Layer 0, Highlighted text on Layer 1)
-        styles_str = (
-            f"Style: MaskStyle,{font_name},{font_size},"
-            f"&HFF000000,&HFF000000,&HAA000000,&HAA000000,"
-            f"-1,0,0,0,100,100,0,0,3,{outline_size + 4},0,2,20,20,{margin_v},1\n"
-            f"Style: TextStyle,{font_name},{font_size},"
-            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
-            f"-1,0,0,0,100,100,0,0,1,4,2,2,20,20,{margin_v},1"
         )
 
     ass_content = f"""[Script Info]
@@ -185,12 +203,13 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     
+    # 2. Xử lý chunks phụ đề
     if pre_chunked_data:
         chunks = pre_chunked_data
     else:
         whisper_words = extract_flat_words_from_transcript(transcript_json)
         
-        # FORCED ALIGNMENT (DIFFLIB EXACT MATCHING) if custom text provided
+        # FORCED ALIGNMENT (DIFFLIB EXACT MATCHING) nếu có text sửa lỗi
         if correct_text and correct_text.strip():
             user_words_raw = re.findall(r'\S+', correct_text.strip())
             aligned_user_words = [{"word": w, "start": None, "end": None} for w in user_words_raw]
@@ -200,7 +219,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             
             sm = difflib.SequenceMatcher(None, whisper_texts, user_texts)
             
-            # Map exact matches
+            # Khớp chính xác
             for tag, i1, i2, j1, j2 in sm.get_opcodes():
                 if tag == 'equal':
                     for i, j in zip(range(i1, i2), range(j1, j2)):
@@ -208,7 +227,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             aligned_user_words[j]['start'] = whisper_words[i].get('start', 0.0)
                             aligned_user_words[j]['end'] = whisper_words[i].get('end', 0.0)
                             
-            # Interpolate missing timestamps smoothly
+            # Nội suy các từ bị thiếu
             i = 0
             last_known_end = 0.0
             while i < len(aligned_user_words):
@@ -244,15 +263,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         else:
             words_to_chunk = whisper_words
             
-        # Apply global offset slider
+        # Tinh chỉnh độ trễ offset
         offset_sec = sub_offset_ms / 1000.0
         for w in words_to_chunk:
             w['start'] = max(0.0, w['start'] + offset_sec)
             w['end'] = max(0.0, w['end'] + offset_sec)
             
-        # SMART RHYTHM CHUNKING
-        chunks = create_smart_rhythm_chunks(words_to_chunk)
+        # Chia cụm nhịp thở thông minh theo max_words_per_chunk
+        chunks = create_smart_rhythm_chunks(words_to_chunk, max_words=max_words_per_chunk)
         
+    # 3. Thiết lập animation tags cho từ đang active
+    if animation_mode == "pop":
+        scale_tag = r"\fscx115\fscy115"
+        reset_scale = r"\fscx100\fscy100"
+    elif animation_mode == "pop_strong":
+        scale_tag = r"\fscx125\fscy125"
+        reset_scale = r"\fscx100\fscy100"
+    else:
+        scale_tag = ""
+        reset_scale = ""
+
+    # 4. Xuất các dòng sự kiện Dialogue
     for chunk in chunks:
         if not chunk: 
             continue
@@ -261,23 +292,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         
         start_str = format_ass_time(chunk_start)
         end_str = format_ass_time(chunk_end)
-        full_text = ' '.join(w['word'] for w in chunk).replace('\n', '')
         
-        # Layer 0: Mask background box (TikTok Karaoke preset only)
-        if sub_style == "TikTok Karaoke":
+        # Xử lý định dạng chữ (In hoa vs nguyên bản)
+        formatted_words = []
+        for w in chunk:
+            raw_w = w['word'].replace('\n', '')
+            formatted_words.append(raw_w.upper() if text_transform == "uppercase" else raw_w)
+            
+        full_text = ' '.join(formatted_words)
+        
+        # Layer 0: Mask background box (Submagic Pill Badge hoặc TikTok Karaoke)
+        if "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
             ass_content += f"Dialogue: 0,{start_str},{end_str},MaskStyle,,0,0,0,,{{\\alpha&HFF&}}{full_text}\n"
             
-        # Netflix Style: Static chunk, no karaoke word animation
-        if sub_style == "Netflix Style":
+        # Netflix Cinematic: Hiển thị nguyên câu tĩnh, không đổi màu từng từ
+        if "Netflix" in sub_style:
             ass_content += f"Dialogue: 1,{start_str},{end_str},TextStyle,,0,0,0,,{full_text}\n"
             continue
         
-        # Layer 1: Karaoke word highlight tracking
+        # Layer 1: Karaoke word highlight tracking kèm Pop Animation
         last_time = chunk_start
         for i, target_word in enumerate(chunk):
             w_start = max(target_word['start'], last_time)
             
-            # Bound end time so words never overlap
+            # Khống chế thời gian kết thúc không đè lên từ kế tiếp
             if i < len(chunk) - 1:
                 w_end = min(target_word['end'], chunk[i+1]['start'])
             else:
@@ -285,38 +323,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 
             w_end = max(w_start + 0.01, w_end)
             
-            # Gap before this word: render neutral white text
+            # Khoảng nghỉ trước từ này: in câu trung tính màu trắng
             if w_start > last_time + 0.01:
                 gap_start = format_ass_time(last_time)
                 gap_end = format_ass_time(w_start)
+                ass_content += f"Dialogue: 1,{gap_start},{gap_end},TextStyle,,0,0,0,,{full_text}\n"
                 
-                parts = [w['word'].replace('\n', '') for w in chunk]
-                line_text = ' '.join(parts)
-                ass_content += f"Dialogue: 1,{gap_start},{gap_end},TextStyle,,0,0,0,,{line_text}\n"
-                
-            # Active word: highlighted with highlight_color
+            # Từ đang đọc: Highlight màu nổi bật + Hiệu ứng nảy Pop nếu có
             word_start_str = format_ass_time(w_start)
             word_end_str = format_ass_time(w_end)
             
             parts = []
-            for j, w in enumerate(chunk):
-                word_text = w['word'].replace('\n', '')
+            for j, w_text in enumerate(formatted_words):
                 if j == i:
-                    parts.append(f"{{\\c{highlight_color}&}}{word_text}{{\\c&H00FFFFFF&}}")
+                    parts.append(f"{{\\c{highlight_color}&{scale_tag}}}{w_text}{{\\c&H00FFFFFF&{reset_scale}}}")
                 else:
-                    parts.append(word_text)
+                    parts.append(w_text)
             line_text = ' '.join(parts)
             ass_content += f"Dialogue: 1,{word_start_str},{word_end_str},TextStyle,,0,0,0,,{line_text}\n"
             
             last_time = w_end
             
-        # Trailing gap at the end of the chunk
+        # Khoảng nghỉ cuối câu nếu còn dư thời gian
         if chunk_end > last_time + 0.01:
             gap_start = format_ass_time(last_time)
             gap_end = format_ass_time(chunk_end)
-            parts = [w['word'].replace('\n', '') for w in chunk]
-            line_text = ' '.join(parts)
-            ass_content += f"Dialogue: 1,{gap_start},{gap_end},TextStyle,,0,0,0,,{line_text}\n"
+            ass_content += f"Dialogue: 1,{gap_start},{gap_end},TextStyle,,0,0,0,,{full_text}\n"
             
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(ass_content)
