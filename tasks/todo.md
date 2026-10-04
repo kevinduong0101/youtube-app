@@ -11,6 +11,6 @@
 - [x] **Phase 4: Redesign Studio UI**
   - [x] Tái thiết kế `app.py` thành bố cục 2 cột Studio Canvas (Stage ở trung tâm, Inspector bên phải).
   - [x] Áp dụng Dark Studio Design System (`#0B0C0F`, `#13151A`, `#191C22`).
-- [ ] **Phase 5: Kiểm Thử & Xuất Bản**
+- [x] **Phase 5: Kiểm Thử & Xuất Bản**
   - [x] Chạy E2E automated test cho cả 5 presets.
-  - [ ] Cập nhật Walkthrough, commit và push lên GitHub.
+  - [x] Cập nhật Walkthrough, commit và push lên GitHub.
