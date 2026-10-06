@@ -1,18 +1,18 @@
-# Danh Sách Nhiệm Vụ: Tái Thiết Kế Toàn Diện UI/UX AutoSub Studio Pro
+# Danh Sách Nhiệm Vụ: Sửa Lỗi Preview, Nâng Cấp Presets & AI Semantic Chunking
 
-- [x] **Task 1: Lập Kế Hoạch & Thiết Kế Kiến Trúc Studio**
-  - [x] Soạn thảo `implementation_plan.md` với tiêu chuẩn Senior Product Designer.
-  - [x] Trình người dùng phê duyệt kế hoạch.
-- [x] **Task 2: Triển Khai Hệ Thống Design Tokens & Studio Dark CSS**
-  - [x] Cài đặt bảng màu Studio: `#0B0E14` (Deep Canvas), `#161B22` (Elevated Card), `#30363D` (Border), `#6366F1` (Indigo/Purple CTA).
-  - [x] Tạo thanh Brand Bar với badge phiên bản và hiệu ứng gradient chữ.
-  - [x] Tạo khung mô phỏng Smartphone Studio Mockup tương tác với Notch và tỷ lệ 9:16.
-- [x] **Task 3: Tái Cấu Trúc Thành 4 Studio Tabs Chuyên Nghiệp**
-  - [x] Tab 1: `📥 Nhập Media & Kịch Bản` (Upload 2 cột cân xứng, chế độ đồng bộ, kịch bản chính xác).
-  - [x] Tab 2: `📝 Soát Lời Thoại` (Thống kê số phân đoạn/thời lượng/wpm, tìm kiếm từ, thẻ timecode trực quan).
-  - [x] Tab 3: `🎨 Studio Styling & Mockup` (5 Studio Presets, Accordion Typography & Motion, Smartphone Mockup tương tác, Frame preview FFmpeg <1s).
-  - [x] Tab 4: `🚀 Xuất Video Hoàn Chỉnh` (Tóm tắt thông số, Render tiến trình 4 bước, video player cân đối).
-- [x] **Task 4: Kiểm Thử & Kiểm Tra Cú Pháp**
-  - [x] `python3 -m py_compile app.py` thành công 100%.
+- [x] **Task 1: Sửa Lỗi Image Preview Streamlit**
+  - [x] Thay thế `use_container_width=True` thành `use_column_width=True` tại mọi lệnh gọi `st.image()` trong `app.py`.
+- [x] **Task 2: Thuật Toán Nhận Diện Từ Ghép Tiếng Việt & AI Subtitle Optimizer**
+  - [x] Tích hợp từ điển từ ghép `VIETNAMESE_COMPOUND_PAIRS` và danh sách từ liên kết treo `DANGLING_PARTICLES`.
+  - [x] Cải tiến `create_smart_rhythm_chunks` không ngắt giữa từ ghép (như 'kế hoạch', 'lập trình', 'browse web').
+  - [x] Thêm hàm `ai_optimize_subtitle_chunks` rà soát và hàn gắn các cụm từ ghép bị cắt rời.
+  - [x] Bổ sung nút `✨ AI TỰ ĐỘNG TỐI ƯU NHỊP SUB` và nút gộp câu nhanh `🔗` trong Tab 2.
+- [x] **Task 3: Nâng Cấp 7 Studio Presets Độc Quyền**
+  - [x] Thêm MrBeast Action Punch (chữ in nghiêng `\i1`, viền kép, pop 125%).
+  - [x] Thêm Ali Abdaal Minimalist (thanh lịch, nét mỏng, bóng đổ mềm mại).
+  - [x] Cập nhật mockup điện thoại CSS tương ứng theo từng preset.
+- [x] **Task 4: Kiểm Thử Tự Động & Xác Minh E2E**
+  - [x] Tạo `test_semantic_chunking.py` và chạy kiểm thử thành công 100%.
+  - [x] Kiểm thử sinh phụ đề ASS cho các preset mới không lỗi.
 - [ ] **Task 5: Git Commit & Cập Nhật Walkthrough**
-  - [ ] Commit thay đổi vào git repository.
+  - [ ] Commit code và push lên remote repo.

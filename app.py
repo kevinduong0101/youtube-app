@@ -17,7 +17,8 @@ from core.subtitle_engine import (
     align_user_script_to_audio,
     create_smart_rhythm_chunks,
     extract_flat_words_from_transcript,
-    generate_ass_subtitle
+    generate_ass_subtitle,
+    ai_optimize_subtitle_chunks
 )
 
 # 1. Cấu hình giao diện Streamlit
@@ -38,9 +39,9 @@ st.markdown("""
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }
 
-/* Ẩn bớt khoảng trắng mặc định phía trên */
+/* Khoảng đệm container */
 .block-container {
-    padding-top: 1.8rem;
+    padding-top: 1.5rem;
     padding-bottom: 3rem;
     max-width: 1200px;
 }
@@ -50,13 +51,14 @@ st.markdown("""
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 20px;
-    background: linear-gradient(135deg, rgba(22, 27, 34, 0.95), rgba(13, 17, 23, 0.95));
+    padding: 14px 22px;
+    background: linear-gradient(135deg, rgba(22, 27, 34, 0.98), rgba(13, 17, 23, 0.98));
     border: 1px solid #30363d;
     border-radius: 14px;
-    margin-bottom: 24px;
+    margin-bottom: 22px;
     backdrop-filter: blur(12px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    line-height: 1.5;
 }
 .brand-title {
     font-size: 1.45rem;
@@ -203,7 +205,7 @@ div.stButton > button:first-child[type="primary"]:hover {
     <div class="brand-title">
         <span>🎬 AutoSub Studio Pro</span>
     </div>
-    <div class="brand-badge">✨ Senior Studio Engine • v2.5</div>
+    <div class="brand-badge">✨ Senior Studio Engine • v2.6</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -359,7 +361,7 @@ with tab_ingest:
                 shutil.rmtree(temp_dir_transcribe, ignore_errors=True)
 
 # ==============================================================================
-# TAB 2: SOÁT & CHỈNH SỬA PHỤ ĐỀ
+# TAB 2: SOÁT & CHỈNH SỬA PHỤ ĐỀ (KÈM AI INSPECTOR)
 # ==============================================================================
 with tab_transcript:
     if not st.session_state.chunks_data:
@@ -379,16 +381,29 @@ with tab_transcript:
         </div>
         """, unsafe_allow_html=True)
 
-        col_search, col_info = st.columns([1.5, 1])
+        col_ai_btn, col_search = st.columns([1.2, 1.8], gap="medium")
+        with col_ai_btn:
+            if st.button("✨ AI TỰ ĐỘNG TỐI ƯU NHỊP SUB", type="secondary", use_container_width=True, help="Quét và tự động nối các từ ghép tiếng Việt (như 'kế hoạch') để câu liền mạch"):
+                opt_chunks, fixes = ai_optimize_subtitle_chunks(st.session_state.chunks_data)
+                st.session_state.chunks_data = opt_chunks
+                if fixes:
+                    st.success(f"🎉 AI đã tối ưu xong {len(fixes)} vị trí ngắt từ: {', '.join(fixes[:2])}")
+                else:
+                    st.info("✅ Tất cả các phân đoạn đều đã liền mạch và chuẩn ngữ nghĩa!")
+                st.rerun()
+
         with col_search:
-            search_query = st.text_input("🔍 Tìm kiếm cụm từ trong phụ đề:", placeholder="Gõ từ cần tìm...")
-        with col_info:
-            st.caption("Mẹo: Sửa chữ tại đây sẽ cập nhật trực tiếp lên video mà không làm lệch nhịp âm thanh gốc.")
+            search_query = st.text_input("🔍 Tìm kiếm cụm từ trong phụ đề:", placeholder="Gõ từ cần tìm...", label_visibility="collapsed")
+
+        st.caption("💡 Mẹo: Bấm '✨ AI Tự Động Tối Ưu' để nối các từ ghép hoặc bấm nút '🔗' bên cạnh mỗi câu để gộp câu thủ công.")
 
         st.markdown("---")
         
-        # Danh sách thẻ chỉnh sửa câu gọn gàng
-        for c_idx, chunk in enumerate(chunks):
+        # Danh sách thẻ chỉnh sửa câu gọn gàng kèm nút gộp câu nhanh
+        for c_idx in range(len(st.session_state.chunks_data)):
+            if c_idx >= len(st.session_state.chunks_data):
+                break
+            chunk = st.session_state.chunks_data[c_idx]
             c_text = " ".join(w['word'] for w in chunk)
             c_start = chunk[0]['start']
             c_end = chunk[-1]['end']
@@ -396,10 +411,10 @@ with tab_transcript:
             if search_query and search_query.lower() not in c_text.lower():
                 continue
                 
-            c_col_time, c_col_input = st.columns([1, 4])
+            c_col_time, c_col_input, c_col_action = st.columns([1.1, 3.8, 0.6])
             with c_col_time:
                 st.markdown(f"""
-                <div style="background: #21262d; border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: #58a6ff; font-weight: 600; text-align: center; margin-top: 4px;">
+                <div style="background: #21262d; border-radius: 6px; padding: 6px 8px; font-size: 0.8rem; color: #58a6ff; font-weight: 600; text-align: center; margin-top: 4px;">
                     #{c_idx+1} &nbsp; {c_start:.1f}s ➔ {c_end:.1f}s
                 </div>
                 """, unsafe_allow_html=True)
@@ -412,26 +427,35 @@ with tab_transcript:
                 )
                 if new_text != c_text:
                     st.session_state.chunks_data[c_idx] = helper_update_chunk_text(chunk, new_text)
+            with c_col_action:
+                if c_idx < len(st.session_state.chunks_data) - 1:
+                    if st.button("🔗", key=f"btn_merge_{c_idx}", help=f"Gộp câu #{c_idx+1} với câu #{c_idx+2}"):
+                        merged = st.session_state.chunks_data[c_idx] + st.session_state.chunks_data[c_idx+1]
+                        st.session_state.chunks_data[c_idx] = merged
+                        st.session_state.chunks_data.pop(c_idx + 1)
+                        st.rerun()
 
 # ==============================================================================
-# TAB 3: STUDIO STYLING & LIVE MOCKUP
+# TAB 3: STUDIO STYLING & LIVE MOCKUP (7 PRESETS ĐỘC QUYỀN)
 # ==============================================================================
 with tab_style:
     col_style_left, col_style_right = st.columns([1.3, 1], gap="large")
     
     with col_style_left:
         st.markdown("""
-        <div class="studio-card-title">🎨 Studio Presets Độc Quyền</div>
+        <div class="studio-card-title">🎨 Studio Presets Độc Quyền (7 Phong Cách)</div>
         """, unsafe_allow_html=True)
         
         sub_style = st.selectbox(
             "Phong cách phụ đề:", 
             [
-                "🔥 Alex Hormozi (Chữ In Hoa, Viền Đen Siêu Dày, Pop Nảy Chữ)",
-                "✨ YouTube Vlog Pro (Viền Nét Đậm, Shadow 3D Mềm Mại)",
-                "🏷️ Submagic Pill Badge (Hộp Bo Tròn Che Nền Sang Trọng)",
-                "⚡ Cyberpunk Neon Glow (Viền Dạ Quang Phát Sáng Điện Tử)",
-                "🍿 Netflix Cinematic (Thanh Lịch Tối Giản Điện Ảnh)"
+                "🔥 Alex Hormozi (Titan Viral - Chữ In Hoa, Viền 10px, Pop Vàng Chanh)",
+                "⚡ MrBeast Action Punch (Kịch Tính Cao, Chữ In Nghiêng, Viền Kép, Pop 125%)",
+                "🌿 Ali Abdaal Minimalist (Thanh Lịch Tối Giản, Bóng Đổ Mềm, Chữ Trắng Nhạt)",
+                "🏷️ Submagic Rounded Pill (Hộp Bo Tròn Che Nền Đen Mờ, Sang Trọng)",
+                "✨ YouTube Vlog Pro (Viền Bo Nét Mềm Mại 6px, Shadow 3D Tự Nhiên)",
+                "🚀 Cyberpunk Neon Glow (Viền Dạ Quang Tím/Cyan Phát Sáng Đa Tầng)",
+                "🍿 Netflix Documentary (Phụ Đề Chuẩn Điện Ảnh, Tĩnh Thanh Thoát)"
             ], 
             index=0,
             label_visibility="collapsed",
@@ -457,7 +481,7 @@ with tab_style:
                 
                 text_transform_choice = st.checkbox(
                     "🔤 VIẾT HOA TOÀN BỘ (Shorts/TikTok)", 
-                    value=True,
+                    value=("Ali Abdaal" not in sub_style and "Netflix" not in sub_style),
                     help="Tự động viết hoa toàn bộ chữ để tăng tỷ lệ đọc khi lướt nhanh."
                 )
                 text_transform = "uppercase" if text_transform_choice else "original"
@@ -472,7 +496,7 @@ with tab_style:
                         "Nảy chữ mạnh mẽ (Pop 125%)",
                         "Chỉ đổi màu tĩnh (Không nảy)"
                     ],
-                    index=0
+                    index=(1 if "MrBeast" in sub_style else (2 if "Netflix" in sub_style else 0))
                 )
                 if "125%" in anim_choice:
                     animation_mode = "pop_strong"
@@ -506,14 +530,28 @@ with tab_style:
         first_word = sample_words[0] if sample_words else "HỌC"
         rest_words = " ".join(sample_words[1:]) if len(sample_words) > 1 else "LẬP TRÌNH"
         
-        # Mô phỏng style bằng CSS
+        # Mô phỏng style bằng CSS động phản ánh chính xác từng Preset
         style_box_css = "background: rgba(0,0,0,0.7); border-radius: 6px; padding: 5px 8px;"
-        if "Submagic" in sub_style:
-            style_box_css = "background: rgba(0, 0, 0, 0.88); border-radius: 14px; padding: 6px 12px; border: 1.5px solid #ffffff;"
+        text_special_css = ""
+
+        if "MrBeast" in sub_style:
+            style_box_css = "background: rgba(0,0,0,0.85); border-radius: 6px; padding: 6px 10px; border-bottom: 2.5px solid #ff0000;"
+            text_special_css = "font-style: italic; font-weight: 900; letter-spacing: 0.5px;"
+        elif "Ali Abdaal" in sub_style:
+            style_box_css = "background: rgba(15, 23, 42, 0.7); border-radius: 8px; padding: 5px 10px; backdrop-filter: blur(4px);"
+            text_special_css = "font-weight: 600; letter-spacing: 1px;"
+        elif "Submagic" in sub_style:
+            style_box_css = "background: rgba(0, 0, 0, 0.9); border-radius: 16px; padding: 6px 14px; border: 1.5px solid rgba(255,255,255,0.7);"
+            text_special_css = "font-weight: 800;"
         elif "Cyberpunk" in sub_style:
-            style_box_css = "background: rgba(10, 10, 25, 0.8); border-radius: 4px; padding: 5px 8px; box-shadow: 0 0 10px #00ffff;"
+            style_box_css = "background: rgba(10, 10, 25, 0.85); border-radius: 4px; padding: 5px 8px; box-shadow: 0 0 12px #ff00ff, 0 0 6px #00ffff;"
+            text_special_css = "font-weight: 800;"
         elif "Netflix" in sub_style:
             style_box_css = "background: transparent; padding: 4px 6px;"
+            text_special_css = "font-weight: 500;"
+        elif "Hormozi" in sub_style:
+            style_box_css = "background: rgba(0,0,0,0.7); border-radius: 6px; padding: 5px 8px;"
+            text_special_css = "font-weight: 900;"
 
         st.markdown(f"""
         <div class="mockup-wrapper">
@@ -521,8 +559,8 @@ with tab_style:
                 <div class="mockup-notch"></div>
                 <div class="mockup-guide">KHUNG 9:16 MOBILE</div>
                 <div style="position: absolute; bottom: {bottom_pct}%; left: 8%; right: 8%; text-align: center; {style_box_css}">
-                    <span style="color: {active_hex_css}; font-weight: 900; font-size: 13px; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">{first_word}</span>
-                    <span style="color: #FFFFFF; font-weight: 800; font-size: 12px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); margin-left: 4px;">{rest_words}</span>
+                    <span style="color: {active_hex_css}; font-size: 13px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); {text_special_css}">{first_word}</span>
+                    <span style="color: #FFFFFF; font-size: 12px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); margin-left: 4px; {text_special_css}">{rest_words}</span>
                 </div>
             </div>
             <div style="font-size: 0.78rem; color: #8b949e; margin-top: 10px; text-align: center;">
@@ -610,7 +648,8 @@ with tab_style:
                             aspect_mode=aspect_mode
                         )
                         
-                        st.image(prev_img_path, caption=f"Frame Thực Tế (Font: {prev_font_name}, Size: {font_size})", use_container_width=True)
+                        # Sửa lỗi: Streamlit 1.36.0 sử dụng use_column_width=True thay vì use_container_width
+                        st.image(prev_img_path, caption=f"Frame Thực Tế (Font: {prev_font_name}, Size: {font_size})", use_column_width=True)
                     except Exception as e:
                         st.error(f"Không thể tạo ảnh xem trước: {e}")
                     finally:
@@ -772,7 +811,7 @@ with tab_export:
         with col_out_c:
             st.video(st.session_state.rendered_video_bytes)
             st.download_button(
-                label="⬇️ TẢI XUỐNG VIDEO (.MP4)",
+                label="⬇️ TẢI XUẤT VIDEO (.MP4)",
                 data=st.session_state.rendered_video_bytes,
                 file_name="autosub_studio_finished.mp4",
                 mime="video/mp4",

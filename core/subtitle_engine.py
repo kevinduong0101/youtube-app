@@ -41,10 +41,69 @@ def transcribe_audio(audio_path, model_name="base", language="vi"):
 # Backward compatibility alias
 call_nvidia_whisper = transcribe_audio
 
+# ==============================================================================
+# BỘ TỪ ĐIỂN TỪ GHÉP & NGỮ NGHĨA TIẾNG VIỆT (COMPOUND-WORD AWARENESS)
+# ==============================================================================
+VIETNAMESE_COMPOUND_PAIRS = {
+    # Kế hoạch & Công việc
+    ("kế", "hoạch"), ("dự", "án"), ("bài", "toán"), ("nhiệm", "vụ"), ("công", "việc"),
+    ("làm", "việc"), ("thực", "hiện"), ("hoàn", "thành"), ("hoàn", "thiện"), ("chuẩn", "bị"),
+    ("tiến", "hành"), ("bắt", "đầu"), ("kết", "thúc"), ("tiến", "độ"), ("kết", "quả"),
+    ("thành", "công"), ("thất", "bại"), ("khó", "khăn"), ("thuận", "lợi"), ("chiến", "lược"),
+    ("mục", "tiêu"), ("hành", "động"), ("phương", "pháp"), ("kỹ", "năng"), ("kinh", "nghiệm"),
+    # Công nghệ & Lập trình & Mạng xã hội
+    ("lập", "trình"), ("máy", "tính"), ("máy", "chủ"), ("trí", "tuệ"), ("nhân", "tạo"),
+    ("phần", "mềm"), ("phần", "cứng"), ("hệ", "thống"), ("công", "nghệ"), ("nền", "tảng"),
+    ("ứng", "dụng"), ("công", "cụ"), ("thiết", "bị"), ("điện", "thoại"), ("mạng", "xã"),
+    ("xã", "hội"), ("tin", "tức"), ("dữ", "liệu"), ("thông", "tin"), ("nội", "dung"),
+    ("kênh", "youtube"), ("video", "clip"), ("người", "xem"), ("tương", "tác"), ("bình", "luận"),
+    ("chia", "sẻ"), ("đăng", "ký"), ("theo", "dõi"), ("thu", "âm"), ("phụ", "đề"),
+    ("tải", "về"), ("tải", "lên"), ("cài", "đặt"), ("gỡ", "bỏ"), ("nâng", "cấp"),
+    ("cập", "nhật"), ("sửa", "chữa"), ("khắc", "phục"), ("sự", "cố"), ("bảo", "mật"),
+    ("an", "toàn"), ("nguy", "hiểm"), ("rủi", "ro"), ("tối", "ưu"), ("phân", "tích"),
+    # Từ mượn công nghệ phổ biến
+    ("browse", "web"), ("lướt", "web"), ("xem", "phim"), ("nghe", "nhạc"), ("đọc", "sách"),
+    ("data", "science"), ("machine", "learning"), ("deep", "learning"), ("artificial", "intelligence"),
+    # Phát triển bản thân & Tư duy
+    ("phát", "triển"), ("nghiên", "cứu"), ("học", "tập"), ("tập", "trung"), ("bản", "thân"),
+    ("tự", "giác"), ("tự", "động"), ("suy", "nghĩ"), ("tư", "duy"), ("ý", "tưởng"),
+    ("sáng", "tạo"), ("đổi", "mới"), ("kiến", "thức"), ("hiểu", "biết"), ("nhận", "thức"),
+    ("cảm", "xúc"), ("tinh", "thần"), ("năng", "lượng"), ("động", "lực"), ("sức", "khỏe"),
+    ("ý", "nghĩa"), ("giá", "trị"), ("tiêu", "chuẩn"), ("chất", "lượng"), ("số", "lượng"),
+    # Kinh doanh & Thị trường
+    ("kinh", "doanh"), ("khách", "hàng"), ("sản", "phẩm"), ("dịch", "vụ"), ("thị", "trường"),
+    ("tiềm", "năng"), ("cơ", "hội"), ("thách", "thức"), ("vấn", "đề"), ("giải", "pháp"),
+    ("đầu", "tư"), ("lợi", "nhuận"), ("doanh", "thu"), ("chi", "phí"), ("ngân", "sách"),
+    ("quản", "lý"), ("điều", "hành"), ("lãnh", "đạo"), ("tổ", "chức"), ("sắp", "xếp"),
+    ("cung", "cấp"), ("hỗ", "trợ"), ("hợp", "tác"), ("kết", "nối"), ("trao", "đổi"),
+    # Thời gian & Không gian
+    ("thời", "gian"), ("không", "gian"), ("hôm", "nay"), ("ngày", "mai"), ("hiện", "tại"),
+    ("tương", "lai"), ("quá", "khứ"), ("lâu", "dài"), ("ngắn", "hạn"), ("bền", "vững"),
+    ("nhanh", "chóng"), ("chính", "xác"), ("rõ", "ràng"), ("chi", "tiết"), ("cụ", "thể"),
+    ("đơn", "giản"), ("hiệu", "quả"), ("tuyệt", "vời"), ("quan", "trọng"), ("cần", "thiết")
+}
+
+DANGLING_PARTICLES = {
+    "để", "và", "với", "của", "cho", "như", "là", "trong", "tại", "khi", "mà", 
+    "hoặc", "nhưng", "bởi", "vì", "do", "từ", "lên", "xuống", "ra", "vào", "về"
+}
+
+def clean_word_token(text):
+    """Loại bỏ dấu câu và chuẩn hóa thành chữ thường để so khớp."""
+    return re.sub(r'[^\w\s]', '', str(text)).strip().lower()
+
+def is_compound_pair(w1, w2):
+    """Kiểm tra xem 2 từ liên tiếp có tạo thành từ ghép hoặc cụm nghĩa không được tách rời."""
+    t1 = clean_word_token(w1)
+    t2 = clean_word_token(w2)
+    if not t1 or not t2:
+        return False
+    return (t1, t2) in VIETNAMESE_COMPOUND_PAIRS
+
 def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_threshold=0.35, max_duration=2.8):
     """
-    Splits a continuous stream of words into readable, rhythm-aware subtitle chunks.
-    Respects pauses in speech, punctuation marks, and character limits.
+    Chia dòng phụ đề thông minh bảo toàn cụm từ ghép tiếng Việt (Compound-Aware Chunking).
+    Không ngắt giữa 'kế hoạch', 'lập trình', 'browse web' v.v.
     """
     if not words:
         return []
@@ -55,37 +114,57 @@ def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_thresho
     for i, w in enumerate(words):
         current_chunk.append(w)
         
-        # If last word, loop will finish and append outside
+        # Nếu là từ cuối cùng, kết thúc vòng lặp
         if i == len(words) - 1:
             break
             
         next_w = words[i + 1]
         should_split = False
         
-        # Condition 1: Significant silence / pause between words (e.g. natural breath)
         silence_gap = next_w.get('start', 0) - w.get('end', 0)
+        word_text = w.get('word', '').strip()
+        
+        # Điều kiện 1: Khoảng lặng tự nhiên khi lấy hơi (người nói dừng rõ ràng)
         if silence_gap >= silence_threshold:
             should_split = True
             
-        # Condition 2: Sentence-ending punctuation (. ! ? ...)
-        word_text = w.get('word', '').strip()
-        if any(word_text.endswith(p) for p in ['.', '!', '?', '...']):
+        # Điều kiện 2: Dấu câu ngắt câu (. ! ? ...)
+        elif any(word_text.endswith(p) for p in ['.', '!', '?', '...']):
             should_split = True
             
-        # Condition 3: Clause-breaking punctuation (, ; : -) if chunk already has at least 2 words
-        if any(word_text.endswith(p) for p in [',', ';', ':', ' - ']) and len(current_chunk) >= 2:
+        # Điều kiện 3: Dấu phẩy / ngắt mệnh đề (, ; : -) nếu câu đã có từ 2 từ trở lên
+        elif any(word_text.endswith(p) for p in [',', ';', ':', ' - ']) and len(current_chunk) >= 2:
             should_split = True
             
-        # Condition 4: Reached max words or max characters
-        chunk_text_len = sum(len(x.get('word', '')) for x in current_chunk) + len(current_chunk) - 1
-        if len(current_chunk) >= max_words or chunk_text_len >= max_chars:
-            should_split = True
+        # Điều kiện 4: Vượt giới hạn số từ hoặc độ dài ký tự
+        else:
+            chunk_text_len = sum(len(x.get('word', '')) for x in current_chunk) + len(current_chunk) - 1
+            chunk_dur = w.get('end', 0) - current_chunk[0].get('start', 0)
             
-        # Condition 5: Duration exceeded
-        chunk_dur = w.get('end', 0) - current_chunk[0].get('start', 0)
-        if chunk_dur >= max_duration and len(current_chunk) >= 2:
-            should_split = True
-            
+            if len(current_chunk) >= max_words or chunk_text_len >= max_chars or (chunk_dur >= max_duration and len(current_chunk) >= 2):
+                # KIỂM TRA TỪ GHÉP: Nếu ngắt ở đây sẽ xé đôi từ ghép (ví dụ: 'kế' | 'hoạch')
+                if is_compound_pair(w.get('word', ''), next_w.get('word', '')) and silence_gap < 0.45:
+                    # Cho phép co giãn linh hoạt +1 từ nếu chunk chưa quá dài
+                    if len(current_chunk) <= max_words and chunk_text_len < max_chars + 12:
+                        should_split = False  # Giữ lại để nhận thêm next_w ở lượt tiếp theo
+                    else:
+                        # Chunk đã quá dài, ngắt TRƯỚC từ hiện tại để cả cụm đi chung vào chunk mới
+                        if len(current_chunk) >= 2:
+                            current_chunk.pop() # Bỏ w ra khỏi chunk hiện tại
+                            chunks.append(current_chunk)
+                            current_chunk = [w] # w bắt đầu chunk mới cùng next_w
+                            should_split = False
+                        else:
+                            should_split = False
+                elif clean_word_token(word_text) in DANGLING_PARTICLES and silence_gap < 0.4:
+                    # Tránh để từ treo (để, với, cho, của) đứng cuối chunk nếu không nghỉ thở
+                    if len(current_chunk) <= max_words:
+                        should_split = False
+                    else:
+                        should_split = True
+                else:
+                    should_split = True
+
         if should_split:
             chunks.append(current_chunk)
             current_chunk = []
@@ -94,6 +173,71 @@ def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_thresho
         chunks.append(current_chunk)
         
     return chunks
+
+def ai_optimize_subtitle_chunks(chunks):
+    """
+    AI Subtitle Inspector: Quét toàn bộ danh sách phân đoạn hiện có, phát hiện và
+    tự động hàn gắn các cụm từ ghép bị cắt rời giữa 2 câu liền kề (như 'kế' -> 'hoạch').
+    Trả về: (new_chunks, fixes_applied)
+    """
+    if not chunks or len(chunks) < 2:
+        return chunks, []
+        
+    new_chunks = [list(c) for c in chunks]
+    fixes_applied = []
+    
+    modified = True
+    passes = 0
+    while modified and passes < 3:
+        modified = False
+        passes += 1
+        i = 0
+        while i < len(new_chunks) - 1:
+            c1 = new_chunks[i]
+            c2 = new_chunks[i + 1]
+            if not c1 or not c2:
+                i += 1
+                continue
+                
+            last_w1 = c1[-1]['word']
+            first_w2 = c2[0]['word']
+            
+            # Kiểm tra xem từ cuối câu trước và từ đầu câu sau có phải từ ghép bị cắt đôi không
+            if is_compound_pair(last_w1, first_w2):
+                pair_name = f"{clean_word_token(last_w1)} {clean_word_token(first_w2)}"
+                # Chiến lược tái cân bằng:
+                # Nếu c1 có ít từ hoặc c2 có nhiều từ: chuyển first_w2 vào c1
+                if len(c1) <= 3 or len(c2) >= 3:
+                    moved_word = c2.pop(0)
+                    c1.append(moved_word)
+                    fixes_applied.append(f"Gộp cụm từ ghép '{pair_name}' vào câu #{i+1}")
+                    modified = True
+                else:
+                    # Ngược lại, chuyển last_w1 sang đầu c2
+                    moved_word = c1.pop()
+                    c2.insert(0, moved_word)
+                    fixes_applied.append(f"Chuyển cụm từ ghép '{pair_name}' sang câu #{i+2}")
+                    modified = True
+            elif clean_word_token(last_w1) in DANGLING_PARTICLES and len(c1) > 1 and len(c2) <= 3:
+                # Chuyển từ treo (như 'để', 'và') sang đầu câu sau
+                moved_word = c1.pop()
+                c2.insert(0, moved_word)
+                fixes_applied.append(f"Chuyển từ liên kết '{clean_word_token(last_w1)}' sang đầu câu #{i+2}")
+                modified = True
+                
+            # Dọn dẹp chunk rỗng nếu có
+            if not c1:
+                new_chunks.pop(i)
+                continue
+            if not c2:
+                new_chunks.pop(i + 1)
+                continue
+                
+            i += 1
+            
+    # Lọc bỏ các chunk rỗng
+    new_chunks = [c for c in new_chunks if c]
+    return new_chunks, fixes_applied
 
 def extract_flat_words_from_transcript(transcript_json):
     """
@@ -138,79 +282,88 @@ def align_user_script_to_audio(script_text, whisper_words, audio_duration=10.0):
     if not user_words_raw:
         return whisper_words
         
-    aligned_user_words = [{"word": w, "start": None, "end": None} for w in user_words_raw]
+    aligned_words = []
+    n_user = len(user_words_raw)
     
     if not whisper_words:
-        dur = float(audio_duration) if audio_duration else 5.0
-        word_dur = dur / len(user_words_raw)
-        for i, uw in enumerate(aligned_user_words):
-            uw['start'] = i * word_dur
-            uw['end'] = (i + 1) * word_dur
-        return aligned_user_words
+        # If no whisper words (e.g. fast-match mode), distribute evenly over duration
+        dur_per_word = audio_duration / n_user if n_user > 0 else 0.5
+        for i, uw in enumerate(user_words_raw):
+            aligned_words.append({
+                "word": uw,
+                "start": i * dur_per_word,
+                "end": (i + 1) * dur_per_word
+            })
+        return aligned_words
         
-    whisper_texts = [re.sub(r'[^\w\s]', '', w['word'].strip().lower()) for w in whisper_words]
-    user_texts = [re.sub(r'[^\w\s]', '', w.strip().lower()) for w in user_words_raw]
+    # Standardize for fuzzy matching
+    def norm(w):
+        return re.sub(r'[^\w\s]', '', w).lower()
+        
+    norm_user = [norm(w) for w in user_words_raw]
+    norm_whisper = [norm(w.get('word', '')) for w in whisper_words]
     
-    sm = difflib.SequenceMatcher(None, whisper_texts, user_texts)
+    matcher = difflib.SequenceMatcher(None, norm_user, norm_whisper)
+    matching_blocks = matcher.get_matching_blocks()
     
-    # Gán mốc thời gian cho các từ khớp chính xác
-    for tag, i1, i2, j1, j2 in sm.get_opcodes():
-        if tag == 'equal':
-            for i, j in zip(range(i1, i2), range(j1, j2)):
-                if i < len(whisper_words) and j < len(aligned_user_words):
-                    aligned_user_words[j]['start'] = float(whisper_words[i].get('start', 0.0))
-                    aligned_user_words[j]['end'] = float(whisper_words[i].get('end', 0.0))
-                    
-    # Nội suy thông minh cho các từ Whisper nghe nhầm hoặc bỏ sót
-    i = 0
-    last_known_end = 0.0
-    while i < len(aligned_user_words):
-        if aligned_user_words[i]['start'] is not None:
-            last_known_end = aligned_user_words[i]['end']
-            i += 1
-            continue
-            
-        j = i
-        while j < len(aligned_user_words) and aligned_user_words[j]['start'] is None:
-            j += 1
-            
-        if j < len(aligned_user_words):
-            next_known_start = aligned_user_words[j]['start']
-        else:
-            if audio_duration and audio_duration > last_known_end:
-                next_known_start = audio_duration
-            else:
-                next_known_start = last_known_end + (j - i) * 0.35
+    user_timestamps = [None] * n_user
+    
+    for block in matching_blocks:
+        u_idx = block.a
+        w_idx = block.b
+        size = block.size
+        for k in range(size):
+            if u_idx + k < n_user and w_idx + k < len(whisper_words):
+                w_obj = whisper_words[w_idx + k]
+                user_timestamps[u_idx + k] = (w_obj['start'], w_obj['end'])
                 
-        if next_known_start < last_known_end:
-            next_known_start = last_known_end
+    # Interpolate gaps in user_timestamps
+    last_known_end = 0.0
+    i = 0
+    while i < n_user:
+        if user_timestamps[i] is not None:
+            last_known_end = user_timestamps[i][1]
+            i += 1
+        else:
+            j = i
+            while j < n_user and user_timestamps[j] is None:
+                j += 1
+            if j < n_user:
+                next_known_start = user_timestamps[j][0]
+            else:
+                next_known_start = max(last_known_end + (j - i) * 0.4, audio_duration)
+                
+            gap_dur = max(0.1, next_known_start - last_known_end)
+            step = gap_dur / (j - i)
+            for k in range(i, j):
+                s = last_known_end + (k - i) * step
+                e = s + step
+                user_timestamps[k] = (s, e)
+            last_known_end = next_known_start
+            i = j
             
-        gap = next_known_start - last_known_end
-        dur_per_word = gap / (j - i) if (j - i) > 0 else 0.3
-        dur_per_word = min(dur_per_word, 0.6)
+    for idx, uw in enumerate(user_words_raw):
+        t_start, t_end = user_timestamps[idx]
+        aligned_words.append({
+            "word": uw,
+            "start": t_start,
+            "end": t_end
+        })
         
-        for k in range(i, j):
-            aligned_user_words[k]['start'] = last_known_end + (k - i) * dur_per_word
-            aligned_user_words[k]['end'] = aligned_user_words[k]['start'] + dur_per_word
-            
-        last_known_end = aligned_user_words[j - 1]['end']
-        i = j
-        
-    return aligned_user_words
+    return aligned_words
 
 def generate_ass_subtitle(
     transcript_json, 
     output_path, 
     video_width=1080, 
     video_height=1920, 
-    margin_v=150, 
-    outline_size=8, 
-    correct_text="", 
-    highlight_color="&H0000FFFF", 
+    margin_v=220, 
+    highlight_color="&H0000E6FF", 
+    correct_text=None, 
     audio_duration=10.0, 
     font_name="UVN Ban Tay", 
     font_size=65, 
-    sub_style="🔥 Alex Hormozi", 
+    sub_style="🔥 Alex Hormozi (Titan Viral)", 
     sub_offset_ms=0,
     animation_mode="pop",
     text_transform="uppercase",
@@ -218,23 +371,30 @@ def generate_ass_subtitle(
     pre_chunked_data=None
 ):
     """
-    Generates an optimized .ass subtitle file with 5 studio-grade presets, 
+    Generates an optimized .ass subtitle file with 7 studio-grade presets, 
     pop bounce animations, and customizable typography.
     """
-    # 1. Định nghĩa Style ASS cho 5 Presets Viral Thịnh Hành
+    # 1. Định nghĩa Style ASS cho 7 Presets Studio Độc Quyền
     if "Alex Hormozi" in sub_style:
-        # Chữ đậm nét, viền đen dày dặn 10px, bóng đổ 3D mạnh mẽ
+        # Chữ in hoa, viền đen siêu dày 10px, bóng đổ 3D mạnh mẽ
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,"
             f"-1,0,0,0,100,100,0,0,1,10,3,2,20,20,{margin_v},1"
         )
-    elif "YouTube Vlog" in sub_style:
-        # Chữ sắc nét, viền đen bo tròn mềm mại, bóng đổ tự nhiên
+    elif "MrBeast" in sub_style:
+        # Chữ in nghiêng đậm dồn dập (\i1\b1), viền kép 8px, shadow đỏ thẫm/đen, kịch tính cao
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
-            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
-            f"-1,0,0,0,100,100,0,0,1,6,2,2,20,20,{margin_v},1"
+            f"&H00FFFFFF,&H00FFFFFF,&H00110022,&HA0000088,"
+            f"-1,-1,0,0,105,100,0,0,1,8,4,2,20,20,{margin_v},1"
+        )
+    elif "Ali Abdaal" in sub_style:
+        # Tối giản thanh lịch, nét thanh thoát (Bold:0), viền mảnh 2px, bóng mờ soft shadow
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00F8FAFC,&H00F8FAFC,&H001E293B,&H40000000,"
+            f"0,0,0,0,100,100,1,0,1,2,1,2,20,20,{margin_v},1"
         )
     elif "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
         # Hộp bo tròn (Pill Badge) màu đen mờ sang trọng ở Layer 0 che sạch nền
@@ -246,15 +406,22 @@ def generate_ass_subtitle(
             f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,"
             f"-1,0,0,0,100,100,0,0,1,4,1,2,20,20,{margin_v},1"
         )
+    elif "YouTube Vlog" in sub_style:
+        # Chữ sắc nét, viền đen bo tròn mềm mại 6px, bóng đổ tự nhiên
+        styles_str = (
+            f"Style: TextStyle,{font_name},{font_size},"
+            f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
+            f"-1,0,0,0,100,100,0,0,1,6,2,2,20,20,{margin_v},1"
+        )
     elif "Cyberpunk" in sub_style:
-        # Viền tím neon phát sáng, bóng dạ quang cyan điện tử
+        # Viền tím neon phát sáng, bóng dạ quang cyan điện tử đa tầng
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00550055,&H80FF00FF,"
             f"-1,0,0,0,100,100,0,0,1,6,4,2,20,20,{margin_v},1"
         )
     else:
-        # Netflix Cinematic: Phụ đề phim tài liệu thanh lịch, tĩnh, không karaoke
+        # Netflix Cinematic / Documentary: Phụ đề tài liệu thanh lịch, tĩnh, không karaoke
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
@@ -292,7 +459,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             w['start'] = max(0.0, w['start'] + offset_sec)
             w['end'] = max(0.0, w['end'] + offset_sec)
             
-        # Chia cụm nhịp thở thông minh theo max_words_per_chunk
+        # Chia cụm nhịp thở thông minh bảo tồn từ ghép
         chunks = create_smart_rhythm_chunks(words_to_chunk, max_words=max_words_per_chunk)
         
     # 3. Thiết lập animation tags cho từ đang active
@@ -324,7 +491,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             
         full_text = ' '.join(formatted_words)
         
-        # Layer 0: Mask background box (Submagic Pill Badge hoặc TikTok Karaoke)
+        # Layer 0: Mask background box (Submagic Pill Badge)
         if "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
             ass_content += f"Dialogue: 0,{start_str},{end_str},MaskStyle,,0,0,0,,{{\\alpha&HFF&}}{full_text}\n"
             
