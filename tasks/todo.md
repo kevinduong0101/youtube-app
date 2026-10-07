@@ -1,18 +1,20 @@
-# Danh Sách Nhiệm Vụ: Sửa Lỗi Preview, Nâng Cấp Presets & AI Semantic Chunking
+# Danh Sách Nhiệm Vụ: Nâng Cấp Hệ Thống Hiệu Ứng Chữ Kinetic Typography (JIZURA-Inspired)
 
-- [x] **Task 1: Sửa Lỗi Image Preview Streamlit**
-  - [x] Thay thế `use_container_width=True` thành `use_column_width=True` tại mọi lệnh gọi `st.image()` trong `app.py`.
-- [x] **Task 2: Thuật Toán Nhận Diện Từ Ghép Tiếng Việt & AI Subtitle Optimizer**
-  - [x] Tích hợp từ điển từ ghép `VIETNAMESE_COMPOUND_PAIRS` và danh sách từ liên kết treo `DANGLING_PARTICLES`.
-  - [x] Cải tiến `create_smart_rhythm_chunks` không ngắt giữa từ ghép (như 'kế hoạch', 'lập trình', 'browse web').
-  - [x] Thêm hàm `ai_optimize_subtitle_chunks` rà soát và hàn gắn các cụm từ ghép bị cắt rời.
-  - [x] Bổ sung nút `✨ AI TỰ ĐỘNG TỐI ƯU NHỊP SUB` và nút gộp câu nhanh `🔗` trong Tab 2.
-- [x] **Task 3: Nâng Cấp 7 Studio Presets Độc Quyền**
-  - [x] Thêm MrBeast Action Punch (chữ in nghiêng `\i1`, viền kép, pop 125%).
-  - [x] Thêm Ali Abdaal Minimalist (thanh lịch, nét mỏng, bóng đổ mềm mại).
-  - [x] Cập nhật mockup điện thoại CSS tương ứng theo từng preset.
-- [x] **Task 4: Kiểm Thử Tự Động & Xác Minh E2E**
-  - [x] Tạo `test_semantic_chunking.py` và chạy kiểm thử thành công 100%.
-  - [x] Kiểm thử sinh phụ đề ASS cho các preset mới không lỗi.
-- [ ] **Task 5: Git Commit & Cập Nhật Walkthrough**
-  - [ ] Commit code và push lên remote repo.
+- [x] **Task 1: Nghiên Cứu Mã Nguồn JIZURA (852wa/JIZURA)**
+  - [x] Phân tích công thức chuyển động vật lý lò xo (Damped Spring Physics `sprg`), co giãn hoạt họa (Squash & Stretch), lắc góc (Kinetic Tilt), và tách lớp Chromatic Glitch.
+- [x] **Task 2: Lập Kế Hoạch & Thiết Kế Kiến Trúc Kinetic ASS**
+  - [x] Tạo `implementation_plan.md` chi tiết và nhận phê duyệt từ người dùng.
+- [x] **Task 3: Nâng Cấp Lõi `core/subtitle_engine.py`**
+  - [x] Tích hợp bộ sinh thẻ `get_kinetic_motion_tags`: Elastic Spring Pop, Kinetic Angle Tilt, Cartoon Squash & Stretch, Chromatic 3D Glitch, Pop Strong, Smooth Fade.
+  - [x] Hỗ trợ cú pháp kịch bản JIZURA `*từ nhấn mạnh*` tự động phóng to 140% và đổi màu riêng.
+  - [x] Hỗ trợ cơ chế Dual-Accent Karaoke (màu riêng cho từ thường vs từ nhấn mạnh).
+  - [x] Tích hợp phân tầng 3D Chromatic Glitch (GhostCyan & GhostMagenta layers).
+- [x] **Task 4: Nâng Cấp Giao Diện `app.py`**
+  - [x] Bộ chọn Hiệu ứng chữ động Kinetic Motion FX trong Tab 3.
+  - [x] Bộ chọn Bảng màu kép Dual-Accent (Active Word vs Emphasis Word).
+  - [x] Mockup smartphone động thời gian thực bằng CSS Keyframes (`jizuraSpring`, `jizuraTilt`, `jizuraSquash`, `jizuraGlitch`).
+  - [x] Nút `🎲 JIZURA Omakase` đổi biến thể nhanh 1-click.
+- [x] **Task 5: Kiểm Thử Tự Động & Xác Minh E2E**
+  - [x] Viết `test_kinetic_effects.py` kiểm thử toàn bộ 7 chế độ chuyển động thành công 100%.
+- [ ] **Task 6: Git Commit & Cập Nhật Walkthrough**
+  - [ ] Commit code và push lên remote repository.

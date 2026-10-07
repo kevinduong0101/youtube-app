@@ -100,10 +100,25 @@ def is_compound_pair(w1, w2):
         return False
     return (t1, t2) in VIETNAMESE_COMPOUND_PAIRS
 
+def clean_and_check_emphasis(word_str):
+    """
+    Phát hiện cú pháp *từ nhấn mạnh* kiểu JIZURA.
+    Trả về: (display_word, is_emphasis)
+    """
+    s = word_str.strip()
+    if s.startswith('*') and s.endswith('*') and len(s) > 2:
+        return s[1:-1], True
+    elif s.startswith('*'):
+        return s[1:], True
+    elif s.endswith('*'):
+        return s[:-1], True
+    return s, False
+
 def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_threshold=0.35, max_duration=2.8):
     """
     Chia dòng phụ đề thông minh bảo toàn cụm từ ghép tiếng Việt (Compound-Aware Chunking).
     Không ngắt giữa 'kế hoạch', 'lập trình', 'browse web' v.v.
+    Hỗ trợ dấu gạch chéo '/' để ngắt nhịp chủ động kiểu JIZURA.
     """
     if not words:
         return []
@@ -112,7 +127,23 @@ def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_thresho
     current_chunk = []
     
     for i, w in enumerate(words):
-        current_chunk.append(w)
+        raw_word = w.get('word', '').strip()
+        
+        # Nếu từ chứa dấu ngắt chủ động '/' (JIZURA slash cut)
+        if raw_word == '/' or raw_word == '//':
+            if current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = []
+            continue
+            
+        clean_w_text, is_emph = clean_and_check_emphasis(raw_word)
+        # Giữ lại metadata emphasis
+        w_copy = dict(w)
+        w_copy['word'] = clean_w_text
+        if is_emph:
+            w_copy['is_emphasis'] = True
+            
+        current_chunk.append(w_copy)
         
         # Nếu là từ cuối cùng, kết thúc vòng lặp
         if i == len(words) - 1:
@@ -122,7 +153,7 @@ def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_thresho
         should_split = False
         
         silence_gap = next_w.get('start', 0) - w.get('end', 0)
-        word_text = w.get('word', '').strip()
+        word_text = clean_w_text
         
         # Điều kiện 1: Khoảng lặng tự nhiên khi lấy hơi (người nói dừng rõ ràng)
         if silence_gap >= silence_threshold:
@@ -143,7 +174,8 @@ def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_thresho
             
             if len(current_chunk) >= max_words or chunk_text_len >= max_chars or (chunk_dur >= max_duration and len(current_chunk) >= 2):
                 # KIỂM TRA TỪ GHÉP: Nếu ngắt ở đây sẽ xé đôi từ ghép (ví dụ: 'kế' | 'hoạch')
-                if is_compound_pair(w.get('word', ''), next_w.get('word', '')) and silence_gap < 0.45:
+                next_clean, _ = clean_and_check_emphasis(next_w.get('word', ''))
+                if is_compound_pair(clean_w_text, next_clean) and silence_gap < 0.45:
                     # Cho phép co giãn linh hoạt +1 từ nếu chunk chưa quá dài
                     if len(current_chunk) <= max_words and chunk_text_len < max_chars + 12:
                         should_split = False  # Giữ lại để nhận thêm next_w ở lượt tiếp theo
@@ -152,7 +184,7 @@ def create_smart_rhythm_chunks(words, max_words=4, max_chars=24, silence_thresho
                         if len(current_chunk) >= 2:
                             current_chunk.pop() # Bỏ w ra khỏi chunk hiện tại
                             chunks.append(current_chunk)
-                            current_chunk = [w] # w bắt đầu chunk mới cùng next_w
+                            current_chunk = [w_copy] # w bắt đầu chunk mới cùng next_w
                             should_split = False
                         else:
                             should_split = False
@@ -205,27 +237,22 @@ def ai_optimize_subtitle_chunks(chunks):
             # Kiểm tra xem từ cuối câu trước và từ đầu câu sau có phải từ ghép bị cắt đôi không
             if is_compound_pair(last_w1, first_w2):
                 pair_name = f"{clean_word_token(last_w1)} {clean_word_token(first_w2)}"
-                # Chiến lược tái cân bằng:
-                # Nếu c1 có ít từ hoặc c2 có nhiều từ: chuyển first_w2 vào c1
                 if len(c1) <= 3 or len(c2) >= 3:
                     moved_word = c2.pop(0)
                     c1.append(moved_word)
                     fixes_applied.append(f"Gộp cụm từ ghép '{pair_name}' vào câu #{i+1}")
                     modified = True
                 else:
-                    # Ngược lại, chuyển last_w1 sang đầu c2
                     moved_word = c1.pop()
                     c2.insert(0, moved_word)
                     fixes_applied.append(f"Chuyển cụm từ ghép '{pair_name}' sang câu #{i+2}")
                     modified = True
             elif clean_word_token(last_w1) in DANGLING_PARTICLES and len(c1) > 1 and len(c2) <= 3:
-                # Chuyển từ treo (như 'để', 'và') sang đầu câu sau
                 moved_word = c1.pop()
                 c2.insert(0, moved_word)
                 fixes_applied.append(f"Chuyển từ liên kết '{clean_word_token(last_w1)}' sang đầu câu #{i+2}")
                 modified = True
                 
-            # Dọn dẹp chunk rỗng nếu có
             if not c1:
                 new_chunks.pop(i)
                 continue
@@ -235,7 +262,6 @@ def ai_optimize_subtitle_chunks(chunks):
                 
             i += 1
             
-    # Lọc bỏ các chunk rỗng
     new_chunks = [c for c in new_chunks if c]
     return new_chunks, fixes_applied
 
@@ -249,7 +275,6 @@ def extract_flat_words_from_transcript(transcript_json):
     for segment in segments:
         words = segment.get("words", [])
         if not words:
-            # Fallback if no word timestamps, split text and distribute time
             text = segment.get("text", "").strip()
             word_list = text.split()
             seg_start = segment.get("start", 0)
@@ -273,7 +298,7 @@ def extract_flat_words_from_transcript(transcript_json):
 def align_user_script_to_audio(script_text, whisper_words, audio_duration=10.0):
     """
     Forced alignment: Maps user-provided exact script onto Whisper's audio timestamps.
-    Ensures 100% correct spelling, punctuation, and wording while keeping natural audio sync.
+    Ensures 100% correct spelling, punctuation, and wording while preserving *emphasis* flags.
     """
     if not script_text or not script_text.strip():
         return whisper_words
@@ -286,19 +311,20 @@ def align_user_script_to_audio(script_text, whisper_words, audio_duration=10.0):
     n_user = len(user_words_raw)
     
     if not whisper_words:
-        # If no whisper words (e.g. fast-match mode), distribute evenly over duration
         dur_per_word = audio_duration / n_user if n_user > 0 else 0.5
         for i, uw in enumerate(user_words_raw):
+            clean_uw, is_emph = clean_and_check_emphasis(uw)
             aligned_words.append({
-                "word": uw,
+                "word": clean_uw,
+                "is_emphasis": is_emph,
                 "start": i * dur_per_word,
                 "end": (i + 1) * dur_per_word
             })
         return aligned_words
         
-    # Standardize for fuzzy matching
     def norm(w):
-        return re.sub(r'[^\w\s]', '', w).lower()
+        clean_w, _ = clean_and_check_emphasis(w)
+        return re.sub(r'[^\w\s]', '', clean_w).lower()
         
     norm_user = [norm(w) for w in user_words_raw]
     norm_whisper = [norm(w.get('word', '')) for w in whisper_words]
@@ -317,7 +343,6 @@ def align_user_script_to_audio(script_text, whisper_words, audio_duration=10.0):
                 w_obj = whisper_words[w_idx + k]
                 user_timestamps[u_idx + k] = (w_obj['start'], w_obj['end'])
                 
-    # Interpolate gaps in user_timestamps
     last_known_end = 0.0
     i = 0
     while i < n_user:
@@ -344,13 +369,68 @@ def align_user_script_to_audio(script_text, whisper_words, audio_duration=10.0):
             
     for idx, uw in enumerate(user_words_raw):
         t_start, t_end = user_timestamps[idx]
+        clean_uw, is_emph = clean_and_check_emphasis(uw)
         aligned_words.append({
-            "word": uw,
+            "word": clean_uw,
+            "is_emphasis": is_emph,
             "start": t_start,
             "end": t_end
         })
         
     return aligned_words
+
+# ==============================================================================
+# HỆ THỐNG HIỆU ỨNG CHỮ ĐỘNG (KINETIC MOTION ENGINE - CẢM HỨNG JIZURA)
+# ==============================================================================
+def get_kinetic_motion_tags(animation_mode, is_emphasis, highlight_color, emphasis_color):
+    """
+    Tạo các thẻ ASS tags chuyển động mô phỏng vật lý (Damped Spring, Tilt, Squash, Glitch)
+    chuẩn phong cách Kinetic Typography chuyên nghiệp.
+    """
+    target_color = emphasis_color if (is_emphasis and emphasis_color) else highlight_color
+    
+    if animation_mode == "elastic_spring":
+        # JIZURA Damped Spring Physics: Nảy vượt ngưỡng (overshoot) rồi co lại cân bằng
+        if is_emphasis:
+            # Từ nhấn mạnh: Nảy cực đại 140% -> 94% -> 105%
+            anim_tag = r"\t(0,70,\fscx140\fscy140)\t(70,140,\fscx94\fscy94)\t(140,210,\fscx105\fscy105)"
+            reset_tag = r"\fscx100\fscy100"
+        else:
+            anim_tag = r"\t(0,70,\fscx125\fscy125)\t(70,140,\fscx96\fscy96)\t(140,200,\fscx100\fscy100)"
+            reset_tag = r"\fscx100\fscy100"
+    elif animation_mode == "kinetic_tilt":
+        # MrBeast Kinetic Punch: Lắc nghiêng góc trục Z (-4° -> +3° -> 0°) giật mắt dồn dập
+        if is_emphasis:
+            anim_tag = r"\t(0,60,\frz-6\fscx135\fscy135)\t(60,130,\frz4)\t(130,200,\frz0\fscx105\fscy105)"
+            reset_tag = r"\frz0\fscx100\fscy100"
+        else:
+            anim_tag = r"\t(0,60,\frz-4\fscx118\fscy118)\t(60,130,\frz3)\t(130,190,\frz0\fscx100\fscy100)"
+            reset_tag = r"\frz0\fscx100\fscy100"
+    elif animation_mode == "squash_stretch":
+        # Cartoon Squash & Stretch: Co dẹp chiều cao khi chạm đất rồi bung dài nảy lên
+        if is_emphasis:
+            anim_tag = r"\t(0,60,\fscx142\fscy70)\t(60,130,\fscx82\fscy130)\t(130,200,\fscx100\fscy100)"
+            reset_tag = r"\fscx100\fscy100"
+        else:
+            anim_tag = r"\t(0,60,\fscx128\fscy78)\t(60,130,\fscx88\fscy120)\t(130,190,\fscx100\fscy100)"
+            reset_tag = r"\fscx100\fscy100"
+    elif animation_mode == "pop_strong":
+        scale = 135 if is_emphasis else 125
+        anim_tag = f"\\fscx{scale}\\fscy{scale}"
+        reset_tag = r"\fscx100\fscy100"
+    elif animation_mode == "pop":
+        scale = 130 if is_emphasis else 115
+        anim_tag = f"\\fscx{scale}\\fscy{scale}"
+        reset_tag = r"\fscx100\fscy100"
+    elif animation_mode == "smooth_fade":
+        scale = 112 if is_emphasis else 105
+        anim_tag = f"\\t(0,100,\\fscx{scale}\\fscy{scale})"
+        reset_tag = r"\fscx100\fscy100"
+    else:
+        anim_tag = ""
+        reset_tag = ""
+        
+    return target_color, anim_tag, reset_tag
 
 def generate_ass_subtitle(
     transcript_json, 
@@ -359,45 +439,44 @@ def generate_ass_subtitle(
     video_height=1920, 
     margin_v=220, 
     highlight_color="&H0000E6FF", 
+    emphasis_color="&H000033FF",
     correct_text=None, 
     audio_duration=10.0, 
     font_name="UVN Ban Tay", 
     font_size=65, 
     sub_style="🔥 Alex Hormozi (Titan Viral)", 
     sub_offset_ms=0,
-    animation_mode="pop",
+    animation_mode="elastic_spring",
     text_transform="uppercase",
     max_words_per_chunk=4,
     pre_chunked_data=None
 ):
     """
-    Generates an optimized .ass subtitle file with 7 studio-grade presets, 
-    pop bounce animations, and customizable typography.
+    Sinh file phụ đề .ASS chuyên nghiệp chuẩn Kinetic Typography (JIZURA-inspired):
+    - Hỗ trợ 6 Motion FX: Elastic Spring, Kinetic Tilt, Squash & Stretch, Chromatic Glitch, Pop, Smooth Fade.
+    - Hỗ trợ Dual-Accent Karaoke (màu active riêng cho từ thường vs từ nhấn mạnh *từ*).
+    - Hỗ trợ phân tầng 3D Chromatic Anaglyph Glitch (Cyan & Magenta offset layers).
     """
-    # 1. Định nghĩa Style ASS cho 7 Presets Studio Độc Quyền
+    # 1. Định nghĩa Style ASS cho các Presets Studio Độc Quyền
     if "Alex Hormozi" in sub_style:
-        # Chữ in hoa, viền đen siêu dày 10px, bóng đổ 3D mạnh mẽ
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,"
             f"-1,0,0,0,100,100,0,0,1,10,3,2,20,20,{margin_v},1"
         )
     elif "MrBeast" in sub_style:
-        # Chữ in nghiêng đậm dồn dập (\i1\b1), viền kép 8px, shadow đỏ thẫm/đen, kịch tính cao
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00110022,&HA0000088,"
             f"-1,-1,0,0,105,100,0,0,1,8,4,2,20,20,{margin_v},1"
         )
     elif "Ali Abdaal" in sub_style:
-        # Tối giản thanh lịch, nét thanh thoát (Bold:0), viền mảnh 2px, bóng mờ soft shadow
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00F8FAFC,&H00F8FAFC,&H001E293B,&H40000000,"
             f"0,0,0,0,100,100,1,0,1,2,1,2,20,20,{margin_v},1"
         )
     elif "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
-        # Hộp bo tròn (Pill Badge) màu đen mờ sang trọng ở Layer 0 che sạch nền
         styles_str = (
             f"Style: MaskStyle,{font_name},{font_size},"
             f"&HFF000000,&HFF000000,&HA0000000,&HA0000000,"
@@ -407,25 +486,34 @@ def generate_ass_subtitle(
             f"-1,0,0,0,100,100,0,0,1,4,1,2,20,20,{margin_v},1"
         )
     elif "YouTube Vlog" in sub_style:
-        # Chữ sắc nét, viền đen bo tròn mềm mại 6px, bóng đổ tự nhiên
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
             f"-1,0,0,0,100,100,0,0,1,6,2,2,20,20,{margin_v},1"
         )
     elif "Cyberpunk" in sub_style:
-        # Viền tím neon phát sáng, bóng dạ quang cyan điện tử đa tầng
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00550055,&H80FF00FF,"
             f"-1,0,0,0,100,100,0,0,1,6,4,2,20,20,{margin_v},1"
         )
     else:
-        # Netflix Cinematic / Documentary: Phụ đề tài liệu thanh lịch, tĩnh, không karaoke
+        # Netflix Documentary
         styles_str = (
             f"Style: TextStyle,{font_name},{font_size},"
             f"&H00FFFFFF,&H00FFFFFF,&H00000000,&H66000000,"
             f"0,0,0,0,100,100,0,0,1,3,1,2,20,20,{margin_v},1"
+        )
+
+    # Thêm Ghost Styles nếu kích hoạt Chromatic 3D Glitch
+    if animation_mode == "chromatic_glitch":
+        styles_str += (
+            f"\nStyle: GhostCyan,{font_name},{font_size},"
+            f"&H80FFFF00,&H80FFFF00,&H00000000,&H00000000,"
+            f"-1,0,0,0,100,100,0,0,1,0,0,2,17,23,{margin_v+2},1"
+            f"\nStyle: GhostMagenta,{font_name},{font_size},"
+            f"&H80FF00FF,&H80FF00FF,&H00000000,&H00000000,"
+            f"-1,0,0,0,100,100,0,0,1,0,0,2,23,17,{max(0, margin_v-2)},1"
         )
 
     ass_content = f"""[Script Info]
@@ -453,27 +541,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         else:
             words_to_chunk = whisper_words
             
-        # Tinh chỉnh độ trễ offset
         offset_sec = sub_offset_ms / 1000.0
         for w in words_to_chunk:
             w['start'] = max(0.0, w['start'] + offset_sec)
             w['end'] = max(0.0, w['end'] + offset_sec)
             
-        # Chia cụm nhịp thở thông minh bảo tồn từ ghép
         chunks = create_smart_rhythm_chunks(words_to_chunk, max_words=max_words_per_chunk)
-        
-    # 3. Thiết lập animation tags cho từ đang active
-    if animation_mode == "pop":
-        scale_tag = r"\fscx115\fscy115"
-        reset_scale = r"\fscx100\fscy100"
-    elif animation_mode == "pop_strong":
-        scale_tag = r"\fscx125\fscy125"
-        reset_scale = r"\fscx100\fscy100"
-    else:
-        scale_tag = ""
-        reset_scale = ""
 
-    # 4. Xuất các dòng sự kiện Dialogue
+    # 3. Xuất các dòng sự kiện Dialogue
     for chunk in chunks:
         if not chunk: 
             continue
@@ -483,11 +558,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         start_str = format_ass_time(chunk_start)
         end_str = format_ass_time(chunk_end)
         
-        # Xử lý định dạng chữ (In hoa vs nguyên bản)
+        # Xử lý định dạng chữ & phát hiện emphasis *từ*
         formatted_words = []
+        word_emph_flags = []
         for w in chunk:
             raw_w = w['word'].replace('\n', '')
-            formatted_words.append(raw_w.upper() if text_transform == "uppercase" else raw_w)
+            clean_w, is_emph = clean_and_check_emphasis(raw_w)
+            is_emph = is_emph or w.get('is_emphasis', False)
+            word_emph_flags.append(is_emph)
+            formatted_words.append(clean_w.upper() if text_transform == "uppercase" else clean_w)
             
         full_text = ' '.join(formatted_words)
         
@@ -495,17 +574,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if "Submagic Pill" in sub_style or "TikTok Karaoke" in sub_style:
             ass_content += f"Dialogue: 0,{start_str},{end_str},MaskStyle,,0,0,0,,{{\\alpha&HFF&}}{full_text}\n"
             
-        # Netflix Cinematic: Hiển thị nguyên câu tĩnh, không đổi màu từng từ
+        # Layer 0: Chromatic Glitch Cyan & Magenta Ghost Layers
+        if animation_mode == "chromatic_glitch":
+            ass_content += f"Dialogue: 0,{start_str},{end_str},GhostCyan,,0,0,0,,{full_text}\n"
+            ass_content += f"Dialogue: 0,{start_str},{end_str},GhostMagenta,,0,0,0,,{full_text}\n"
+
+        # Netflix Cinematic: Hiển thị nguyên câu tĩnh
         if "Netflix" in sub_style:
             ass_content += f"Dialogue: 1,{start_str},{end_str},TextStyle,,0,0,0,,{full_text}\n"
             continue
         
-        # Layer 1: Karaoke word highlight tracking kèm Pop Animation
+        # Layer 1: Karaoke word highlight tracking kèm Kinetic Motion FX
         last_time = chunk_start
         for i, target_word in enumerate(chunk):
             w_start = max(target_word['start'], last_time)
             
-            # Khống chế thời gian kết thúc không đè lên từ kế tiếp
             if i < len(chunk) - 1:
                 w_end = min(target_word['end'], chunk[i+1]['start'])
             else:
@@ -513,20 +596,28 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 
             w_end = max(w_start + 0.01, w_end)
             
-            # Khoảng nghỉ trước từ này: in câu trung tính màu trắng
+            # Khoảng nghỉ trước từ: in câu trung tính
             if w_start > last_time + 0.01:
                 gap_start = format_ass_time(last_time)
                 gap_end = format_ass_time(w_start)
                 ass_content += f"Dialogue: 1,{gap_start},{gap_end},TextStyle,,0,0,0,,{full_text}\n"
                 
-            # Từ đang đọc: Highlight màu nổi bật + Hiệu ứng nảy Pop nếu có
+            # Tạo kinetic animation tags cho từ đang active
+            is_emph = word_emph_flags[i]
+            target_color, anim_tag, reset_tag = get_kinetic_motion_tags(
+                animation_mode, 
+                is_emph, 
+                highlight_color, 
+                emphasis_color
+            )
+            
             word_start_str = format_ass_time(w_start)
             word_end_str = format_ass_time(w_end)
             
             parts = []
             for j, w_text in enumerate(formatted_words):
                 if j == i:
-                    parts.append(f"{{\\c{highlight_color}&{scale_tag}}}{w_text}{{\\c&H00FFFFFF&{reset_scale}}}")
+                    parts.append(f"{{\\c{target_color}&{anim_tag}}}{w_text}{{\\c&H00FFFFFF&{reset_tag}}}")
                 else:
                     parts.append(w_text)
             line_text = ' '.join(parts)
@@ -534,7 +625,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             
             last_time = w_end
             
-        # Khoảng nghỉ cuối câu nếu còn dư thời gian
+        # Khoảng nghỉ cuối câu
         if chunk_end > last_time + 0.01:
             gap_start = format_ass_time(last_time)
             gap_end = format_ass_time(chunk_end)

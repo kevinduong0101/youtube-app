@@ -2,6 +2,7 @@ import streamlit as st
 import tempfile
 import os
 import shutil
+import random
 from fontTools.ttLib import TTFont
 
 from core.media_utils import (
@@ -29,7 +30,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. Design System Tokens & CSS Glassmorphism Studio
+# 2. Design System Tokens & CSS Glassmorphism Studio (Kèm Keyframe Animations)
 st.markdown("""
 <style>
 /* Nền tối sâu & typography */
@@ -199,13 +200,34 @@ div.stButton > button:first-child[type="primary"]:hover {
     pointer-events: none;
     letter-spacing: 1px;
 }
+
+/* JIZURA CSS Motion Animations cho Mockup trực quan */
+@keyframes jizuraSpring {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(1.24); }
+    60% { transform: scale(0.96); }
+}
+@keyframes jizuraTilt {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(-6deg) scale(1.18); }
+    65% { transform: rotate(4deg) scale(1.1); }
+}
+@keyframes jizuraSquash {
+    0%, 100% { transform: scale(1, 1); }
+    30% { transform: scale(1.3, 0.74); }
+    65% { transform: scale(0.85, 1.22); }
+}
+@keyframes jizuraGlitch {
+    0%, 100% { text-shadow: -2.5px 0 #00ffff, 2.5px 0 #ff00ff; }
+    50% { text-shadow: 2.5px 0 #00ffff, -2.5px 0 #ff00ff; }
+}
 </style>
 
 <div class="brand-bar">
     <div class="brand-title">
         <span>🎬 AutoSub Studio Pro</span>
     </div>
-    <div class="brand-badge">✨ Senior Studio Engine • v2.6</div>
+    <div class="brand-badge">✨ JIZURA Kinetic Engine • v2.8</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -292,14 +314,21 @@ with tab_ingest:
 
     st.markdown("---")
     st.markdown("""
-    <div class="studio-card-title">📜 Kịch Bản / Lời Thoại Chính Xác (Khuyên dùng để chuẩn 100% từng từ)</div>
+    <div class="studio-card-title">📜 Kịch Bản / Lời Thoại Chính Xác (Hỗ Trợ Cú Pháp JIZURA *từ nhấn mạnh*)</div>
     """, unsafe_allow_html=True)
+    
     custom_script = st.text_area(
         "Dán toàn bộ lời thoại đã thu âm vào đây:",
-        placeholder="Dán kịch bản có dấu của bạn vào đây... AI sẽ tự động so khớp để giữ đúng từng chữ của bạn mà không lo Whisper nghe nhầm!",
+        placeholder="Ví dụ: Học *lập trình* cùng AutoSub để tạo ra những *kết quả* đột phá / và làm chủ công nghệ!",
         height=120,
         label_visibility="collapsed"
     )
+
+    st.markdown("""
+    <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid #4f46e5; border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; color: #c7d2fe; margin-bottom: 15px;">
+        ⚡ <b>Mẹo Kịch Bản JIZURA:</b> Bọc chữ bằng <code>*từ khóa*</code> (ví dụ: <code>Học *lập trình*</code>) để tự động nảy cực đại và đổi màu nhấn mạnh riêng. Dùng dấu <code>/</code> để chủ động ngắt dòng bất cứ vị trí nào.
+    </div>
+    """, unsafe_allow_html=True)
 
     btn_transcribe = st.button("⚡ BẮT ĐẦU ĐỒNG BỘ PHỤ ĐỀ", use_container_width=True, type="primary")
 
@@ -399,7 +428,6 @@ with tab_transcript:
 
         st.markdown("---")
         
-        # Danh sách thẻ chỉnh sửa câu gọn gàng kèm nút gộp câu nhanh
         for c_idx in range(len(st.session_state.chunks_data)):
             if c_idx >= len(st.session_state.chunks_data):
                 break
@@ -436,37 +464,80 @@ with tab_transcript:
                         st.rerun()
 
 # ==============================================================================
-# TAB 3: STUDIO STYLING & LIVE MOCKUP (7 PRESETS ĐỘC QUYỀN)
+# TAB 3: STUDIO STYLING & KINETIC MOTION (JIZURA-INSPIRED)
 # ==============================================================================
 with tab_style:
     col_style_left, col_style_right = st.columns([1.3, 1], gap="large")
     
     with col_style_left:
-        st.markdown("""
-        <div class="studio-card-title">🎨 Studio Presets Độc Quyền (7 Phong Cách)</div>
-        """, unsafe_allow_html=True)
-        
+        col_preset_title, col_omakase = st.columns([1.5, 1])
+        with col_preset_title:
+            st.markdown("""
+            <div class="studio-card-title">🎨 Studio Presets (7 Phong Cách)</div>
+            """, unsafe_allow_html=True)
+        with col_omakase:
+            btn_omakase = st.button("🎲 JIZURA Omakase", help="1-Click ngẫu nhiên hóa cặp màu và hiệu ứng chữ động thời thượng")
+
+        PRESET_LIST = [
+            "🔥 Alex Hormozi (Titan Viral - Chữ In Hoa, Viền 10px, Pop Vàng Chanh)",
+            "⚡ MrBeast Action Punch (Kịch Tính Cao, Chữ In Nghiêng, Viền Kép, Pop 125%)",
+            "🌿 Ali Abdaal Minimalist (Thanh Lịch Tối Giản, Bóng Đổ Mềm, Chữ Trắng Nhạt)",
+            "🏷️ Submagic Rounded Pill (Hộp Bo Tròn Che Nền Đen Mờ, Sang Trọng)",
+            "✨ YouTube Vlog Pro (Viền Bo Nét Mềm Mại 6px, Shadow 3D Tự Nhiên)",
+            "🚀 Cyberpunk Neon Glow (Viền Dạ Quang Tím/Cyan Phát Sáng Đa Tầng)",
+            "🍿 Netflix Documentary (Phụ Đề Chuẩn Điện Ảnh, Tĩnh Thanh Thoát)"
+        ]
+
         sub_style = st.selectbox(
             "Phong cách phụ đề:", 
-            [
-                "🔥 Alex Hormozi (Titan Viral - Chữ In Hoa, Viền 10px, Pop Vàng Chanh)",
-                "⚡ MrBeast Action Punch (Kịch Tính Cao, Chữ In Nghiêng, Viền Kép, Pop 125%)",
-                "🌿 Ali Abdaal Minimalist (Thanh Lịch Tối Giản, Bóng Đổ Mềm, Chữ Trắng Nhạt)",
-                "🏷️ Submagic Rounded Pill (Hộp Bo Tròn Che Nền Đen Mờ, Sang Trọng)",
-                "✨ YouTube Vlog Pro (Viền Bo Nét Mềm Mại 6px, Shadow 3D Tự Nhiên)",
-                "🚀 Cyberpunk Neon Glow (Viền Dạ Quang Tím/Cyan Phát Sáng Đa Tầng)",
-                "🍿 Netflix Documentary (Phụ Đề Chuẩn Điện Ảnh, Tĩnh Thanh Thoát)"
-            ], 
+            PRESET_LIST, 
             index=0,
             label_visibility="collapsed",
             help="Chọn phong cách phù hợp với định dạng kênh của bạn."
         )
 
-        with st.expander("🔤 Typography & Điểm Nhấn Màu Sắc", expanded=True):
+        with st.expander("✨ Hiệu Ứng Chữ Động (Kinetic Motion FX)", expanded=True):
+            anim_choice = st.selectbox(
+                "Kiểu chuyển động chữ nghệ thuật (Kinetic Motion):",
+                options=[
+                    "🔥 Elastic Spring Pop (JIZURA Spring - Nảy Lò Xo Đàn Hồi 3 Nhịp)",
+                    "⚡ Kinetic Angle Tilt (MrBeast Punch - Lắc Nghiêng Góc Chéo)",
+                    "🎨 Cartoon Squash & Stretch (Co Giãn Hoạt Họa Năng Động)",
+                    "👾 Chromatic 3D Glitch (Tách Lớp Quang Sai Cyan/Magenta)",
+                    "💥 Pop Mạnh Mẽ (Phóng To 125%)",
+                    "✨ Pop Vừa Phải (Phóng To 115%)",
+                    "🌿 Smooth Alpha Fade (Tối Giản Mềm Mại)"
+                ],
+                index=0,
+                help="Hiệu ứng nảy chữ mô phỏng vật lý giúp video cuốn hút và giữ chân người xem từng giây."
+            )
+            
+            if "Elastic Spring" in anim_choice:
+                animation_mode = "elastic_spring"
+            elif "Kinetic Angle" in anim_choice:
+                animation_mode = "kinetic_tilt"
+            elif "Squash & Stretch" in anim_choice:
+                animation_mode = "squash_stretch"
+            elif "Chromatic 3D" in anim_choice:
+                animation_mode = "chromatic_glitch"
+            elif "125%" in anim_choice:
+                animation_mode = "pop_strong"
+            elif "115%" in anim_choice:
+                animation_mode = "pop"
+            else:
+                animation_mode = "smooth_fade"
+
+        with st.expander("🔤 Typography & Bảng Màu Kép (Dual-Accent)", expanded=True):
             col_typo_1, col_typo_2 = st.columns(2)
             with col_typo_1:
                 font_file = st.file_uploader("Font chữ tuỳ chỉnh (.ttf, .otf)", type=["ttf", "otf"])
                 font_size = st.slider("Cỡ chữ (Font Size)", min_value=25, max_value=130, value=75, step=5)
+                text_transform_choice = st.checkbox(
+                    "🔤 VIẾT HOA TOÀN BỘ (Shorts/TikTok)", 
+                    value=("Ali Abdaal" not in sub_style and "Netflix" not in sub_style),
+                    help="Tự động viết hoa toàn bộ chữ để tăng tỷ lệ đọc khi lướt nhanh."
+                )
+                text_transform = "uppercase" if text_transform_choice else "original"
             with col_typo_2:
                 highlight_colors = {
                     "Vàng Chanh Hormozi (#FFE600)": ("#FFE600", "&H0000E6FF"),
@@ -476,51 +547,37 @@ with tab_style:
                     "Đỏ Cam Rực Rỡ (#FF5500)": ("#FF5500", "&H000055FF"),
                     "Trắng Tinh Khôi (#FFFFFF)": ("#FFFFFF", "&H00FFFFFF")
                 }
-                selected_color_name = st.selectbox("Màu Active Karaoke:", options=list(highlight_colors.keys()), index=0)
+                selected_color_name = st.selectbox("Màu Active (Từ thường đang đọc):", options=list(highlight_colors.keys()), index=0)
                 active_hex_css, highlight_color_hex = highlight_colors[selected_color_name]
-                
-                text_transform_choice = st.checkbox(
-                    "🔤 VIẾT HOA TOÀN BỘ (Shorts/TikTok)", 
-                    value=("Ali Abdaal" not in sub_style and "Netflix" not in sub_style),
-                    help="Tự động viết hoa toàn bộ chữ để tăng tỷ lệ đọc khi lướt nhanh."
-                )
-                text_transform = "uppercase" if text_transform_choice else "original"
 
-        with st.expander("⚙️ Chuyển Động & Căn Chỉnh Vị Trí", expanded=True):
-            col_anim_1, col_anim_2 = st.columns(2)
-            with col_anim_1:
-                anim_choice = st.selectbox(
-                    "Hiệu ứng nảy chữ:",
-                    options=[
-                        "Nảy chữ phóng to (Pop 115% - Khuyên dùng)",
-                        "Nảy chữ mạnh mẽ (Pop 125%)",
-                        "Chỉ đổi màu tĩnh (Không nảy)"
-                    ],
-                    index=(1 if "MrBeast" in sub_style else (2 if "Netflix" in sub_style else 0))
-                )
-                if "125%" in anim_choice:
-                    animation_mode = "pop_strong"
-                elif "115%" in anim_choice:
-                    animation_mode = "pop"
-                else:
-                    animation_mode = "none"
+                emphasis_colors = {
+                    "Đỏ Lửa (#FF2200)": ("#FF2200", "&H000022FF"),
+                    "Hồng Neon TikTok (#FF007F)": ("#FF007F", "&H007F00FF"),
+                    "Tím Dạ Quang (#D946EF)": ("#D946EF", "&H00EF46D9"),
+                    "Vàng Chanh Rực (#FFE600)": ("#FFE600", "&H0000E6FF"),
+                    "Xanh Cyan (#00FFFF)": ("#00FFFF", "&H00FFFF00"),
+                    "Trắng Tuyết (#FFFFFF)": ("#FFFFFF", "&H00FFFFFF")
+                }
+                selected_emph_name = st.selectbox("Màu Emphasis (Từ nhấn mạnh *từ*):", options=list(emphasis_colors.keys()), index=0)
+                emph_hex_css, emphasis_color_hex = emphasis_colors[selected_emph_name]
 
+        with st.expander("⚙️ Vị Trí & Căn Nhịp", expanded=False):
+            col_pos_1, col_pos_2 = st.columns(2)
+            with col_pos_1:
+                margin_v = st.slider("Vị trí từ dưới lên (Margin V)", min_value=20, max_value=800, value=220, step=10)
                 max_words_per_chunk = st.slider("Mật độ từ mỗi dòng", min_value=1, max_value=6, value=3, step=1)
-
-            with col_anim_2:
-                margin_v = st.slider("Vị trí từ dưới lên (Margin V)", min_value=20, max_value=800, value=200, step=10)
+            with col_pos_2:
                 sub_offset_ms = st.slider("Độ trễ nhịp (ms) [Âm là sớm hơn]", min_value=-500, max_value=500, value=0, step=25)
-
-        aspect_choice = st.selectbox(
-            "Tỷ lệ khung hình xuất ra:",
-            options=["Giữ nguyên tỷ lệ gốc (Khuyên dùng)", "Ép chuẩn dọc 9:16 (Shorts/TikTok/Reels)"],
-            index=0
-        )
-        aspect_mode = "vertical_9_16" if "9:16" in aspect_choice else "original"
+                aspect_choice = st.selectbox(
+                    "Tỷ lệ khung hình xuất ra:",
+                    options=["Giữ nguyên tỷ lệ gốc (Khuyên dùng)", "Ép chuẩn dọc 9:16 (Shorts/TikTok/Reels)"],
+                    index=0
+                )
+                aspect_mode = "vertical_9_16" if "9:16" in aspect_choice else "original"
 
     with col_style_right:
         st.markdown("""
-        <div class="studio-card-title">📱 Mô Phỏng Khung Hình Trực Quan</div>
+        <div class="studio-card-title">📱 Mô Phỏng Chuyển Động Trực Quan</div>
         """, unsafe_allow_html=True)
         
         # Tính toán vị trí tương đối
@@ -530,9 +587,19 @@ with tab_style:
         first_word = sample_words[0] if sample_words else "HỌC"
         rest_words = " ".join(sample_words[1:]) if len(sample_words) > 1 else "LẬP TRÌNH"
         
-        # Mô phỏng style bằng CSS động phản ánh chính xác từng Preset
+        # Thiết lập style và CSS animation cho Mockup
         style_box_css = "background: rgba(0,0,0,0.7); border-radius: 6px; padding: 5px 8px;"
         text_special_css = ""
+        motion_animation_css = "animation: jizuraSpring 1.5s infinite ease-in-out;"
+
+        if animation_mode == "kinetic_tilt":
+            motion_animation_css = "animation: jizuraTilt 1.4s infinite ease-in-out;"
+        elif animation_mode == "squash_stretch":
+            motion_animation_css = "animation: jizuraSquash 1.5s infinite ease-in-out;"
+        elif animation_mode == "chromatic_glitch":
+            motion_animation_css = "animation: jizuraGlitch 0.8s infinite linear;"
+        elif animation_mode == "smooth_fade":
+            motion_animation_css = ""
 
         if "MrBeast" in sub_style:
             style_box_css = "background: rgba(0,0,0,0.85); border-radius: 6px; padding: 6px 10px; border-bottom: 2.5px solid #ff0000;"
@@ -557,14 +624,14 @@ with tab_style:
         <div class="mockup-wrapper">
             <div class="mockup-phone">
                 <div class="mockup-notch"></div>
-                <div class="mockup-guide">KHUNG 9:16 MOBILE</div>
+                <div class="mockup-guide">9:16 KINETIC LIVE</div>
                 <div style="position: absolute; bottom: {bottom_pct}%; left: 8%; right: 8%; text-align: center; {style_box_css}">
-                    <span style="color: {active_hex_css}; font-size: 13px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); {text_special_css}">{first_word}</span>
+                    <span style="color: {active_hex_css}; font-size: 13px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display: inline-block; {text_special_css} {motion_animation_css}">{first_word}</span>
                     <span style="color: #FFFFFF; font-size: 12px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); margin-left: 4px; {text_special_css}">{rest_words}</span>
                 </div>
             </div>
             <div style="font-size: 0.78rem; color: #8b949e; margin-top: 10px; text-align: center;">
-                Kéo thanh <b>Margin V</b> để canh vị trí không che mặt và tránh thanh công cụ TikTok.
+                Hiệu ứng động: <b>{anim_choice.split('(')[0]}</b>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -628,6 +695,7 @@ with tab_style:
                             video_height=vid_h,
                             margin_v=margin_v,
                             highlight_color=highlight_color_hex,
+                            emphasis_color=emphasis_color_hex,
                             font_name=prev_font_name,
                             font_size=font_size,
                             sub_style=sub_style,
@@ -648,7 +716,6 @@ with tab_style:
                             aspect_mode=aspect_mode
                         )
                         
-                        # Sửa lỗi: Streamlit 1.36.0 sử dụng use_column_width=True thay vì use_container_width
                         st.image(prev_img_path, caption=f"Frame Thực Tế (Font: {prev_font_name}, Size: {font_size})", use_column_width=True)
                     except Exception as e:
                         st.error(f"Không thể tạo ảnh xem trước: {e}")
@@ -670,7 +737,7 @@ with tab_export:
             <div style="font-weight: 700; color: #58a6ff; margin-bottom: 8px;">📋 Tóm Tắt Thông Số Xuất Bản:</div>
             <div style="font-size: 0.88rem; line-height: 1.8; color: #c9d1d9;">
                 • <b>Style:</b> {sub_style.split('(')[0]}<br/>
-                • <b>Hiệu ứng nảy:</b> {anim_choice}<br/>
+                • <b>Kinetic Motion:</b> {anim_choice.split('(')[0]}<br/>
                 • <b>Định dạng chữ:</b> {'Chữ In Hoa' if text_transform == 'uppercase' else 'Nguyên Bản'}<br/>
                 • <b>Tỷ lệ xuất:</b> {'9:16 Vertical' if aspect_mode == 'vertical_9_16' else 'Giữ nguyên gốc'}<br/>
                 • <b>Âm thanh:</b> Giữ nguyên 100% Bitrate & Codec gốc (-c:a copy)
@@ -759,6 +826,7 @@ with tab_export:
                     video_height=vid_h,
                     margin_v=margin_v,
                     highlight_color=highlight_color_hex,
+                    emphasis_color=emphasis_color_hex,
                     font_name=font_name,
                     font_size=font_size,
                     sub_style=sub_style,
@@ -811,9 +879,9 @@ with tab_export:
         with col_out_c:
             st.video(st.session_state.rendered_video_bytes)
             st.download_button(
-                label="⬇️ TẢI XUẤT VIDEO (.MP4)",
+                label="⬇️ TẢI XUỐNG VIDEO (.MP4)",
                 data=st.session_state.rendered_video_bytes,
-                file_name="autosub_studio_finished.mp4",
+                file_name="autosub_kinetic_finished.mp4",
                 mime="video/mp4",
                 type="primary",
                 use_container_width=True
